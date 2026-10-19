@@ -1,0 +1,10 @@
+# Week 3 onward: install per lane when you need it (pip install -r requirements-ml.txt).
+-r requirements.txt
+xgboost>=2.0
+torch>=2.3
+sentence-transformers>=3.0
+datasets>=2.19
+fastapi>=0.110
+uvicorn>=0.29
+openai>=1.30   # one OpenAI-compatible client for Gemini, Groq, GitHub Models and Ollama
+mlx-lm>=0.19 ; sys_platform == "darwin" and platform_machine == "arm64"

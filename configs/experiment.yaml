@@ -1,0 +1,24 @@
+# Experiment settings. Change these through a PR, never by hand mid-run.
+seed: 7
+
+split:
+  fractions: {train: 0.60, cal: 0.20, test: 0.20}   # tau is chosen on `cal` ONLY (DESIGN §2.5)
+
+target:
+  reading: pgr        # "pgr" (headline) or "absolute" (DESIGN §0)
+  level: 0.95
+
+threshold:
+  delta: 0.05                  # 1 - confidence of the lower bound
+  bound: paired_bootstrap      # hoeffding | bernstein | paired_bootstrap
+  bootstrap_B: 2000
+  selection: learn_then_test
+
+models:
+  small: qwen3.5-4b
+  large: claude-sonnet-4.6
+
+synthetic:
+  n: 2000
+  mix: {gsm8k: 0.4, mmlu: 0.4, arena: 0.2}
+  dup_rate: 0.05
