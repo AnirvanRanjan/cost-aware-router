@@ -1,0 +1,32 @@
+# Price table — USD per 1M tokens. The single source of truth for router/costs.py.
+# Anthropic verified 2026-08-26; OpenAI + Google verified 2026-09-10. Re-verify before final numbers.
+as_of: "2026-09-10"
+batch_discount: 0.50          # Anthropic + OpenAI Batch APIs halve input and output
+cache_read_multiplier: 0.10   # prompt-cache reads bill at 0.1x input
+
+# Rev A cost reference: price c_L at this model and set c_S = 0.
+reference_frontier: claude-sonnet-4.6
+reference_local: qwen3.5-4b
+
+models:
+  claude-opus-5:     {provider: anthropic, input: 5.00, output: 25.00}
+  claude-sonnet-5:   {provider: anthropic, input: 2.00, output: 10.00}
+  claude-sonnet-4.6: {provider: anthropic, input: 3.00, output: 15.00}
+  claude-haiku-4.5:  {provider: anthropic, input: 1.00, output: 5.00}
+  gpt-5.6-terra:     {provider: openai,    input: 2.50, output: 15.00}
+  gpt-5-nano:        {provider: openai,    input: 0.05, output: 0.40}
+  gemini-3-flash:    {provider: google,    input: 0.50, output: 3.00, free_tier: true}
+  gemini-3.5-flash:  {provider: google,    input: 1.50, output: 9.00, free_tier: true}
+
+  # Local models cost $0 in API spend (cost model M1). tokens_per_sec are ESTIMATES for an
+  # M2 base chip (~100 GB/s) at batch size 1. Lane D replaces them with measured values in week 1.
+  llama-3.2-3b:      {provider: local, input: 0, output: 0, tokens_per_sec: 47}
+  qwen3.5-4b:        {provider: local, input: 0, output: 0, tokens_per_sec: 37}
+  phi-4-mini:        {provider: local, input: 0, output: 0, tokens_per_sec: 37}
+  gemma-3-4b:        {provider: local, input: 0, output: 0, tokens_per_sec: 32}
+  qwen3.5-9b:        {provider: local, input: 0, output: 0, tokens_per_sec: 13}
+
+sources:
+  anthropic: https://platform.claude.com/docs/en/about-claude/pricing
+  openai: https://benchlm.ai/openai/api-pricing
+  google: https://curlscape.com/blog/google-gemini-api-pricing-guide-2026
