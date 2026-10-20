@@ -14,6 +14,12 @@ from router.graders import extract_number, gsm8k_exact_match, gsm8k_gold, numeri
     ("Answer: -3.5 degrees", -3.5),
     ("It drops by −4 points", -4),
     ("The answer is 18. (I checked 3 times.)", 18),    # explicit marker beats the last number
+    # regressions from real GPT-4 / Mixtral GSM8K responses:
+    ("(4/3)*360 = 480 peanuts\nSo, Darma could eat 480 peanuts in 6 minutes.", 480),
+    ("16 intervals x 30 = 480 cans\nSo one machine makes 480 cans of soda in 8 hours.", 480),
+    ("77 / 5 = 15.4 minutes\nRounded to the nearest minute, it will take 15 minutes.", 15),
+    ("240 / 80 = 3. 6. However, he can put 4 shelves in the room.", 4),
+    ("she has 2 blue and 4 yellow. 11. Therefore, Martha has 3 blue butterflies.", 3),
 ])
 def test_extract_number(text, want):
     assert extract_number(text) == pytest.approx(want)
@@ -37,3 +43,11 @@ def test_numeric_match_and_exact_match():
     assert not numeric_match(math.nan, 72)
     assert gsm8k_exact_match("so 72 clips.", 72) == 1.0
     assert gsm8k_exact_match("so 71 clips.", 72) == 0.0
+
+
+def test_numbers_copied_from_the_question_do_not_override_the_result():
+    q = "Marly has $300 in total. How many $100 bills can she get?"
+    r = "$300 / $100 = 3\nMarly can get three $100 bills."
+    assert extract_number(r, question=q) == 3
+    assert extract_number("6 minutes = 360 s; (4/3)*360 = 480\nShe eats 480 peanuts in 6 minutes.",
+                          question="How many peanuts in 6 minutes?") == 480

@@ -160,11 +160,11 @@ def load_routerbench(
     for m in models:
         responses = work[f"{m}|model_response"].map(lambda c: "\n".join(parse_turns(c)))
         raw = pd.to_numeric(work[m], errors="coerce")
-        for i, (qid, source, resp, rb_score, n_in) in enumerate(
-            zip(work["sample_id"], work["source"], responses, raw, work["n_in"])
+        for i, (qid, source, resp, rb_score, n_in, query) in enumerate(
+            zip(work["sample_id"], work["source"], responses, raw, work["n_in"], work["query"])
         ):
             if source == "gsm8k" and gsm8k_gold is not None:
-                score = graders.gsm8k_exact_match(resp, float(reference.loc[work.index[i]]))
+                score = graders.gsm8k_exact_match(resp, float(reference.loc[work.index[i]]), question=query)
                 grader, version = "gsm8k_exact_match", graders.VERSION
             else:
                 if pd.isna(rb_score):
