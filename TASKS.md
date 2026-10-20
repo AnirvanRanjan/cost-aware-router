@@ -16,7 +16,7 @@ Done already: the code foundation, the RouterBench audit, the loader with re-gra
 near-duplicate grouping (T04), and kartiken07's measured M2 speeds. The data is a GitHub release:
 
 ```bash
-gh release download data-d9ef5869b99739aa -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
+gh release download data-3f774421cc116201 -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
 python scripts/verify_data.py        # must print "Same data as everyone else."
 ```
 
@@ -25,7 +25,7 @@ Then review the open PRs: #3 audit, #4 loader + decisions, the dedup PR, and thi
 
 | Who | Do this now | Why it can't wait |
 |---|---|---|
-| **A** · Ani | ✅ T58 decided (repo stays public). ✅ T35 code written (`router/trackb.py`), ready for Qwen's results. Next: **T07 gold answer letters** (B's grader needs them), then the embedding dedup pass when B hands over F2. | T35 is on the critical path to the headline result |
+| **A** · Ani | ✅ T58 decided (repo stays public). ✅ T35 code written (`router/trackb.py`), ready for Qwen's results. ✅ T07 gold letters done. Next: the embedding dedup pass when B hands over F2. | T35 is on the critical path to the headline result |
 | **B** · HSID007 | Full brief: `briefs/B.md`. **T32 first:** the `mcq_logprob` grader. Then T10–T12 (heuristics, TF-IDF, `bge-base` embeddings) on the real corpus, and hand the F2 file to A for the embedding dedup pass. | D needs T32 before Qwen can be scored on MMLU, ARC and Winogrande |
 | **C** | T05 (two-line fix), then T20–T21: metrics and the exact threshold sweep, tested on synthetic data and then run on the Mixtral scores already in the release. | The first real Pareto curve (week 8) is built on these |
 | **D** · kartiken07 | **T30 first:** `generate.py` with the MLX client and the cache. Then T31 (batched decoding), T06 (branch protection) and T40 (Gemini key on the M2). | T30 → T33 is the longest chain in the project: Qwen's overnight runs feed both the headline and the demo |
@@ -56,9 +56,9 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 |---|---|---|---|
 | T01 | All | Agree the model pairs (DECISIONS D-05 to D-08): Qwen vs GPT-4 is the headline and the demo; Mixtral vs GPT-4 the development pair and the RouteLLM comparison; Yi-34B optional; Mistral-7B dropped; HellaSwag reported separately. | PR #4 approved by every lane |
 | T02 | All | Review and merge PR #3 (audit), then PR #4 (loader). One reviewer per lane on #4, since it changes `schema.py` and `costs.py`. | Both merged into `main` |
-| T03 | A | ✅ Done. Loader rerun with Mixtral + Yi-34B; data published as release `data-d9ef5869b99739aa`. | — |
+| T03 | A | ✅ Done. Loader rerun with Mixtral + Yi-34B; data published as release `data-3f774421cc116201`. | — |
 | T04 | A | ✅ Lexical pass done (585 pairs, `notes/dedup_report.md`). Remaining: the embedding pass, once B delivers F2 (T12). | Report shows the embedding pass ran |
-| T07 | A | **Gold answer letters for MMLU, ARC and Winogrande** in `corpus.reference`, read off RouterBench: whenever any model answered correctly, its letter is the gold one. Covers 99% of ARC, 95.5% of MMLU, 100% of Winogrande; correct models agree 100%. Questions with no gold are left out of Track B scoring. | B's T32 grader can score Qwen on all three datasets |
+| T07 | A | ✅ Done. Gold letters in `corpus.reference`: ARC 99.1%, MMLU 95.5%, Winogrande 100%, HellaSwag 97.6%, 0 conflicts. Release `data-3f774421cc116201`. | — |
 | T05 | C | Fix `estimate_spend.py` so measured and estimated speeds are labelled separately. | Output says which is which |
 | T06 | D | Branch protection on `main`, PR template, `CODEOWNERS` so any `schema.py` change requests every lane. | A test PR shows the rules |
 
