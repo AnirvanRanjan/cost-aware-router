@@ -17,7 +17,7 @@ feature engineering and router architecture. **You review:** C's pull requests.
 git clone https://github.com/AnirvanRanjan/cost-aware-router.git && cd cost-aware-router
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt && pytest                 # all tests pass
-gh release download data-d9ef5869b99739aa -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
+gh release download data-3f774421cc116201 -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
 python scripts/verify_data.py                             # "Same data as everyone else."
 pip install -r requirements-ml.txt                        # torch, sentence-transformers, xgboost, mlx-lm
 ```
@@ -60,10 +60,10 @@ for each option label as the next token.
 - Agree the interface with Kartiken: his runner calls `scorer.option_logprobs(prompt, labels)` and
   writes SCORES rows with `grader="mcq_logprob"`, `mean_n_out=1`.
 
-**Gold answers:** the corpus doesn't store the correct letter yet. Ani is adding them (T07): they
-can be read off RouterBench itself, because whenever any model got a question right its answer
-letter is the gold one. That covers 99% of ARC, 95.5% of MMLU and 100% of Winogrande, and the
-correct models agree 100% of the time.
+**Gold answers:** ✅ ready. `corpus.reference` holds the correct letter for MMLU, ARC, Winogrande
+and HellaSwag (T07, release `data-3f774421cc116201`), voted from every model that answered correctly.
+Coverage: 99.1% of ARC, 95.5% of MMLU, 100% of Winogrande; questions with no gold letter are
+skipped.
 
 **Done when:** unit tests pass with a fake model returning fixed logits; and on 20 real MMLU
 questions on a Mac, Qwen's accuracy is clearly above chance (0.25) with no answer letter above ~40%.
