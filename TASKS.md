@@ -25,7 +25,7 @@ Then review the open PRs: #3 audit, #4 loader + decisions, the dedup PR, and thi
 
 | Who | Do this now | Why it can't wait |
 |---|---|---|
-| **A** · Ani | T58: ask the guide about the public repo. Write the Track B alignment code for T35 now (Qwen's answers joined to RouterBench's GPT-4 scores by qid), so it is ready when Qwen's runs land. Run the embedding dedup pass as soon as B hands over F2. | T35 is on the critical path to the headline result |
+| **A** · Ani | ✅ T58 decided (repo stays public). ✅ T35 code written (`router/trackb.py`), ready for Qwen's results. Next: run the embedding dedup pass as soon as B hands over F2, and pick a licence. | T35 is on the critical path to the headline result |
 | **B** | **T32 first:** the `mcq_logprob` grader. Then T10–T12 (heuristics, TF-IDF, `bge-base` embeddings) on the real corpus, and hand the F2 file to A for the embedding dedup pass. | D needs T32 before Qwen can be scored on MMLU, ARC and Winogrande |
 | **C** | T05 (two-line fix), then T20–T21: metrics and the exact threshold sweep, tested on synthetic data and then run on the Mixtral scores already in the release. | The first real Pareto curve (week 8) is built on these |
 | **D** · kartiken07 | **T30 first:** `generate.py` with the MLX client and the cache. Then T31 (batched decoding), T06 (branch protection) and T40 (Gemini key on the M2). | T30 → T33 is the longest chain in the project: Qwen's overnight runs feed both the headline and the demo |
@@ -122,7 +122,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 | T55 | D | Reproducibility: one command from raw files to every figure; tested on a fresh clone on another Mac | Someone outside the lane reproduces a figure |
 | T56 | All | Slides | Reviewed by the guide |
 | T57 | All | Viva prep: likely questions (why PGR, why not GPT-3.5 as the small model, how τ avoids leakage, what if the free tier disappears) | Each person answers every question once |
-| T58 | A | Ask the guide about publishing the repo before evaluation; add a licence if it stays public | Answer recorded in `DECISIONS.md` |
+| T58 | A | ✅ Repo stays public (DECISIONS D-09). Still open: choose a licence (MIT is the usual pick for student projects). | Licence file added, or a decision not to |
 
 ---
 
