@@ -17,9 +17,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.1"  # 1.1: SOURCES gains the RouterBench datasets (additive)
 
-SOURCES = ("gsm8k", "mmlu", "arena", "mbpp")
+SOURCES = ("gsm8k", "mmlu", "arena", "mbpp", "hellaswag", "arc-challenge", "winogrande", "mt-bench")
 SPLITS = ("train", "cal", "test")
 
 

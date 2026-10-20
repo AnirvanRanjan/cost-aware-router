@@ -14,7 +14,7 @@ estimate.
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt          # weeks 1-2 core, about a minute
-pytest                                   # expect: 40 passed
+pytest                                   # expect: all tests pass
 python scripts/00_make_synthetic.py      # -> artifacts/synthetic/ + a headroom table
 python scripts/estimate_spend.py         # the Phase-0 gate: dollars and hours before any spend
 ```

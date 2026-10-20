@@ -73,3 +73,19 @@ def test_frame_cost_prices_only_the_frontier_arm(prices, syn):
     small = syn.scores["model"] == syn.config.small_model
     assert (cost[small] == 0).all()
     assert (cost[~small] > 0).all()
+
+
+def test_price_as_borrows_the_reference_price(prices):
+    gpt4 = prices["gpt-4-1106-preview"]
+    sonnet = prices["claude-sonnet-4.6"]
+    assert (gpt4.input, gpt4.output) == (sonnet.input, sonnet.output)
+    assert prices["mistralai/mixtral-8x7b-chat"].is_local
+
+
+def test_price_as_must_point_at_a_priced_model(tmp_path):
+    from router.costs import PriceTable
+    bad = tmp_path / "m.yaml"
+    bad.write_text("as_of: x\nbatch_discount: 0.5\ncache_read_multiplier: 0.1\nreference_frontier: a\n"
+                   "reference_local: a\nmodels:\n  a: {price_as: nope}\n")
+    with pytest.raises(KeyError, match="price_as"):
+        PriceTable.load(bad)

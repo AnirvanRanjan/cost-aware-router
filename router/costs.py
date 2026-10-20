@@ -52,7 +52,16 @@ class PriceTable:
     @classmethod
     def load(cls, path: str | Path = DEFAULT_PRICES) -> "PriceTable":
         raw = yaml.safe_load(Path(path).read_text())
-        models = {name: ModelPrice(name=name, **spec) for name, spec in raw["models"].items()}
+        models = {}
+        for name, spec in raw["models"].items():
+            spec = dict(spec)
+            alias = spec.pop("price_as", None)
+            if alias is not None:
+                if alias not in raw["models"] or "price_as" in raw["models"][alias]:
+                    raise KeyError(f"{name}: price_as {alias!r} must name a model with its own prices")
+                base = raw["models"][alias]
+                spec = {"provider": base["provider"], "input": base["input"], "output": base["output"], **spec}
+            models[name] = ModelPrice(name=name, **spec)
         return cls(
             models,
             batch_discount=float(raw["batch_discount"]),

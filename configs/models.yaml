@@ -27,6 +27,12 @@ models:
   gemma-3-4b:        {provider: local, input: 0, output: 0, tokens_per_sec: 32}
   qwen3.5-9b:        {provider: local, input: 0, output: 0, tokens_per_sec: 13}
 
+  # RouterBench models (Track A). Re-priced at 2026 rates per DESIGN Rev A: the frontier arm costs
+  # what the reference frontier model costs today; the small-arm candidates are free local models (M1).
+  gpt-4-1106-preview:          {price_as: claude-sonnet-4.6}
+  mistralai/mixtral-8x7b-chat: {provider: local, input: 0, output: 0}
+  mistralai/mistral-7b-chat:   {provider: local, input: 0, output: 0}
+
 sources:
   anthropic: https://platform.claude.com/docs/en/about-claude/pricing
   openai: https://benchlm.ai/openai/api-pricing

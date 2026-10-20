@@ -1,0 +1,11 @@
+# Data sources for Track A. Read by scripts/01_acquire_routerbench.py.
+routerbench:
+  file: artifacts/raw/routerbench/routerbench_0shot.pkl
+  # GSM8K train answers, needed to re-grade GSM8K (RouterBench's own GSM8K scores aren't correctness).
+  # Download in a browser and save here:
+  # https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/train-00000-of-00001.parquet
+  gsm8k_train: artifacts/raw/gsm8k/train-00000-of-00001.parquet
+  large: gpt-4-1106-preview
+  # Both small-model candidates are loaded so the team can compare them before choosing.
+  # The audit recommends Mixtral: Mistral-7B answers "A" to almost every multiple-choice question.
+  small: [mistralai/mixtral-8x7b-chat, mistralai/mistral-7b-chat]
