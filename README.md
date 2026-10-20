@@ -22,6 +22,18 @@ python scripts/estimate_spend.py         # the Phase-0 gate: dollars and hours b
 Install `requirements-ml.txt` when your lane needs torch, sentence-transformers, MLX or FastAPI.
 Copy `.env.example` to `.env` for API keys. `.env` is gitignored.
 
+## Getting the data
+
+Generated data isn't in git. Each version is a GitHub release named after its fingerprint:
+
+```bash
+gh release download data-3f774421cc116201 -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
+python scripts/verify_data.py            # must print "Same data as everyone else."
+```
+
+To make a new version instead: `scripts/01_acquire_routerbench.py`, then `scripts/02_dedup.py`
+(needs `routerbench_0shot.pkl` and the GSM8K answers file; see `configs/datasets.yaml`).
+
 ## Layout
 
 ```
