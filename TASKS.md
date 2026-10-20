@@ -25,8 +25,8 @@ Then review the open PRs: #3 audit, #4 loader + decisions, the dedup PR, and thi
 
 | Who | Do this now | Why it can't wait |
 |---|---|---|
-| **A** · Ani | ✅ T58 decided (repo stays public). ✅ T35 code written (`router/trackb.py`), ready for Qwen's results. Next: run the embedding dedup pass as soon as B hands over F2, and pick a licence. | T35 is on the critical path to the headline result |
-| **B** | **T32 first:** the `mcq_logprob` grader. Then T10–T12 (heuristics, TF-IDF, `bge-base` embeddings) on the real corpus, and hand the F2 file to A for the embedding dedup pass. | D needs T32 before Qwen can be scored on MMLU, ARC and Winogrande |
+| **A** · Ani | ✅ T58 decided (repo stays public). ✅ T35 code written (`router/trackb.py`), ready for Qwen's results. Next: **T07 gold answer letters** (B's grader needs them), then the embedding dedup pass when B hands over F2. | T35 is on the critical path to the headline result |
+| **B** | Full brief: `briefs/B.md`. **T32 first:** the `mcq_logprob` grader. Then T10–T12 (heuristics, TF-IDF, `bge-base` embeddings) on the real corpus, and hand the F2 file to A for the embedding dedup pass. | D needs T32 before Qwen can be scored on MMLU, ARC and Winogrande |
 | **C** | T05 (two-line fix), then T20–T21: metrics and the exact threshold sweep, tested on synthetic data and then run on the Mixtral scores already in the release. | The first real Pareto curve (week 8) is built on these |
 | **D** · kartiken07 | **T30 first:** `generate.py` with the MLX client and the cache. Then T31 (batched decoding), T06 (branch protection) and T40 (Gemini key on the M2). | T30 → T33 is the longest chain in the project: Qwen's overnight runs feed both the headline and the demo |
 
@@ -58,6 +58,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 | T02 | All | Review and merge PR #3 (audit), then PR #4 (loader). One reviewer per lane on #4, since it changes `schema.py` and `costs.py`. | Both merged into `main` |
 | T03 | A | ✅ Done. Loader rerun with Mixtral + Yi-34B; data published as release `data-d9ef5869b99739aa`. | — |
 | T04 | A | ✅ Lexical pass done (585 pairs, `notes/dedup_report.md`). Remaining: the embedding pass, once B delivers F2 (T12). | Report shows the embedding pass ran |
+| T07 | A | **Gold answer letters for MMLU, ARC and Winogrande** in `corpus.reference`, read off RouterBench: whenever any model answered correctly, its letter is the gold one. Covers 99% of ARC, 95.5% of MMLU, 100% of Winogrande; correct models agree 100%. Questions with no gold are left out of Track B scoring. | B's T32 grader can score Qwen on all three datasets |
 | T05 | C | Fix `estimate_spend.py` so measured and estimated speeds are labelled separately. | Output says which is which |
 | T06 | D | Branch protection on `main`, PR template, `CODEOWNERS` so any `schema.py` change requests every lane. | A test PR shows the rules |
 
@@ -122,7 +123,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 | T55 | D | Reproducibility: one command from raw files to every figure; tested on a fresh clone on another Mac | Someone outside the lane reproduces a figure |
 | T56 | All | Slides | Reviewed by the guide |
 | T57 | All | Viva prep: likely questions (why PGR, why not GPT-3.5 as the small model, how τ avoids leakage, what if the free tier disappears) | Each person answers every question once |
-| T58 | A | ✅ Repo stays public (DECISIONS D-09). Still open: choose a licence (MIT is the usual pick for student projects). | Licence file added, or a decision not to |
+| T58 | A | ✅ Repo stays public (D-09), MIT licence (D-10). | — |
 
 ---
 
