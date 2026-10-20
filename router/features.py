@@ -1,4 +1,4 @@
-"""Feature extraction for the cost-aware router (DESIGN.md §1.3, briefs/B.md T10).
+"""Feature extraction for the cost-aware router (DESIGN.md §1.3, briefs/B.md T10 & T11).
 
 Features must come from the text alone. Never use `source`, `subject`, or `qid`:
 in the live demo a query arrives with no label saying which benchmark it is from.
@@ -7,13 +7,16 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Sequence
+from typing import Any, Sequence
 
 import numpy as np
+import scipy.sparse
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.pipeline import FeatureUnion
 
 from router.graders import parse_options
 
-VERSION = "features-1.0"
+VERSION = "features-1.1"
 
 _PUNCT_CHARS = set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
 _SENT_SPLIT = re.compile(r"[.!?]+(?:\s+|\Z)")
@@ -204,3 +207,101 @@ def heuristics(prompts: Sequence[str] | str) -> tuple[np.ndarray, list[str]]:
     rows = [_extract_single_prompt(p) for p in prompts]
     mat = np.array(rows, dtype=np.float32)
     return mat, list(HEURISTIC_NAMES)
+
+
+class TfidfFeatureExtractor:
+    """F1 TF-IDF feature extractor (DESIGN.md §1.3, briefs/B.md T11).
+
+    Combines word 1-2 grams with character 3-5 grams.
+    STRICT ANTI-LEAKAGE RULE: Must be fitted on the `train` split only.
+    """
+
+    def __init__(
+        self,
+        word_ngram_range: tuple[int, int] = (1, 2),
+        char_ngram_range: tuple[int, int] = (3, 5),
+        max_word_features: int = 50_000,
+        max_char_features: int = 50_000,
+        min_df: int | float = 2,
+        sublinear_tf: bool = True,
+    ):
+        self.word_ngram_range = word_ngram_range
+        self.char_ngram_range = char_ngram_range
+        self.max_word_features = max_word_features
+        self.max_char_features = max_char_features
+        self.min_df = min_df
+        self.sublinear_tf = sublinear_tf
+
+        self.word_vec: TfidfVectorizer | None = None
+        self.char_vec: TfidfVectorizer | None = None
+        self.union: FeatureUnion | None = None
+        self.is_fitted: bool = False
+
+    def fit(self, train_prompts: Sequence[str]) -> TfidfFeatureExtractor:
+        """Fit the TF-IDF feature extractor ONLY on the training split prompts."""
+        prompts = [str(p) if p is not None else "" for p in train_prompts]
+
+        self.word_vec = TfidfVectorizer(
+            ngram_range=self.word_ngram_range,
+            max_features=self.max_word_features,
+            min_df=self.min_df,
+            sublinear_tf=self.sublinear_tf,
+        )
+        self.char_vec = TfidfVectorizer(
+            ngram_range=self.char_ngram_range,
+            analyzer="char",
+            max_features=self.max_char_features,
+            min_df=self.min_df,
+            sublinear_tf=self.sublinear_tf,
+        )
+        self.union = FeatureUnion([
+            ("word", self.word_vec),
+            ("char", self.char_vec),
+        ])
+        self.union.fit(prompts)
+        self.is_fitted = True
+        return self
+
+    def transform(self, prompts: Sequence[str] | str) -> scipy.sparse.csr_matrix:
+        """Transform prompts using the fitted TF-IDF vocabulary."""
+        if not self.is_fitted or self.union is None:
+            raise RuntimeError("TfidfFeatureExtractor must be fitted before transforming.")
+        if isinstance(prompts, str):
+            prompts = [prompts]
+        clean_prompts = [str(p) if p is not None else "" for p in prompts]
+        return self.union.transform(clean_prompts)
+
+    def fit_transform(self, train_prompts: Sequence[str]) -> scipy.sparse.csr_matrix:
+        self.fit(train_prompts)
+        return self.transform(train_prompts)
+
+
+def extract_f1_by_split(
+    corpus: Any,
+    extractor: TfidfFeatureExtractor | None = None,
+    train_split: str = "train",
+) -> tuple[dict[str, scipy.sparse.csr_matrix], TfidfFeatureExtractor]:
+    """Fit TF-IDF on the train split only, then transform every split (briefs/B.md T11).
+
+    Enforces that fitting strictly never sees non-train splits ('cal', 'test').
+    Returns a dictionary mapping split name to its sparse feature matrix, and the fitted extractor.
+    """
+    if "split" not in corpus.columns or "prompt" not in corpus.columns:
+        raise ValueError("corpus dataframe must contain 'split' and 'prompt' columns.")
+
+    train_mask = corpus["split"] == train_split
+    if not train_mask.any():
+        raise ValueError(f"corpus contains no rows for train split '{train_split}'.")
+
+    if extractor is None:
+        extractor = TfidfFeatureExtractor()
+
+    train_prompts = corpus.loc[train_mask, "prompt"].tolist()
+    extractor.fit(train_prompts)
+
+    features_by_split: dict[str, scipy.sparse.csr_matrix] = {}
+    for split_name in corpus["split"].unique():
+        split_prompts = corpus.loc[corpus["split"] == split_name, "prompt"].tolist()
+        features_by_split[split_name] = extractor.transform(split_prompts)
+
+    return features_by_split, extractor

@@ -1,8 +1,14 @@
-"""Unit tests for F0 text heuristics (DESIGN.md §1.3, briefs/B.md T10)."""
+"""Unit tests for F0 heuristics and F1 TF-IDF features (DESIGN.md §1.3, briefs/B.md T10 & T11)."""
 import numpy as np
+import pandas as pd
 import pytest
 
-from router.features import HEURISTIC_NAMES, heuristics
+from router.features import (
+    HEURISTIC_NAMES,
+    TfidfFeatureExtractor,
+    extract_f1_by_split,
+    heuristics,
+)
 
 
 def _spearman(a: np.ndarray, b: np.ndarray) -> float:
@@ -65,3 +71,58 @@ def test_token_count_spearman_rho_on_synthetic_gsm8k(syn):
     rho = _spearman(token_counts, difficulty)
     # briefs/B.md: "token count has Spearman ρ > 0.3 with truth.difficulty on synthetic GSM8K"
     assert rho > 0.3, f"Expected Spearman rho > 0.3, got {rho:.3f}"
+
+
+def test_f1_tfidf_extractor_word_and_char_ngrams():
+    train_prompts = [
+        "Calculate the derivative of x^2 + 3x.",
+        "Solve the differential equation with python code.",
+        "Prove the theorem step by step.",
+    ]
+    extractor = TfidfFeatureExtractor(min_df=1, max_word_features=1000, max_char_features=1000)
+    X = extractor.fit_transform(train_prompts)
+
+    assert X.shape[0] == len(train_prompts)
+    assert X.shape[1] > 10  # Has both word and char n-grams
+    assert extractor.is_fitted is True
+
+    # Transform new prompts
+    X_new = extractor.transform(["Calculate something else."])
+    assert X_new.shape[0] == 1
+    assert X_new.shape[1] == X.shape[1]
+
+
+def test_f1_tfidf_fitting_never_sees_cal_or_test():
+    """Anti-leakage proof: briefs/B.md T11 - Done when a test proves fitting never sees cal or test."""
+    corpus = pd.DataFrame({
+        "qid": ["q1", "q2", "q3", "q4", "q5", "q6"],
+        "split": ["train", "train", "cal", "cal", "test", "test"],
+        "prompt": [
+            "Normal training question about calculus and math.",
+            "Another standard train question with code and algorithms.",
+            "Canary calibration sentence: cal_canary_super_unique_token.",
+            "Second calibration item with common math words.",
+            "Canary test evaluation sentence: test_canary_super_unique_token.",
+            "Second test evaluation query.",
+        ],
+    })
+
+    extractor = TfidfFeatureExtractor(min_df=1)
+    features_by_split, fitted_ext = extract_f1_by_split(corpus, extractor=extractor)
+
+    # 1. Check all splits were transformed
+    assert set(features_by_split.keys()) == {"train", "cal", "test"}
+
+    # 2. Check feature dimensionalities match across all splits
+    n_features = features_by_split["train"].shape[1]
+    assert features_by_split["cal"].shape[1] == n_features
+    assert features_by_split["test"].shape[1] == n_features
+    assert features_by_split["train"].shape[0] == 2
+    assert features_by_split["cal"].shape[0] == 2
+    assert features_by_split["test"].shape[0] == 2
+
+    # 3. PROVE THAT FITTING NEVER SAW CAL OR TEST:
+    # The canary words must NOT appear in the fitted word vocabulary!
+    word_vocab = fitted_ext.word_vec.vocabulary_
+    assert "cal_canary_super_unique_token" not in word_vocab, "LEAKAGE: cal token found in fitted vocabulary!"
+    assert "test_canary_super_unique_token" not in word_vocab, "LEAKAGE: test token found in fitted vocabulary!"
