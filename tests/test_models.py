@@ -91,6 +91,7 @@ def test_f1_logreg_baseline_on_synthetic(syn):
 
 
 def test_xgboost_f0_f2_baseline_on_synthetic(syn):
+    pytest.importorskip("xgboost")
     c = syn.corpus.set_index("qid")
     wide = syn.scores.pivot(index="qid", columns="model", values="score")
     s_S = wide[syn.config.small_model].loc[c.index].to_numpy()
