@@ -7,6 +7,9 @@ What it does, each step justified by notes/routerbench_audit.md:
   * re-grades GSM8K by numeric exact match against the GSM8K train-split answers, because the
     stored GSM8K scores are a five-level rubric, not correctness. Without the answers file,
     GSM8K is left out rather than loaded with misleading labels;
+  * fills in the gold answer letter for multiple-choice questions (T07). RouterBench doesn't store
+    it, but whenever a model answered correctly, its answer letter is the gold one. All correct
+    models agree on every question; questions no model got right have no gold letter;
   * estimates token counts from the text, since RouterBench stores cost but no tokens;
   * groups exact-duplicate prompts under one group_id, then splits 60/20/20 per dataset so no
     group crosses splits. Week 2's dedup.py refines group_id with near-duplicates.
@@ -28,7 +31,7 @@ import pandas as pd
 from router import graders, schema
 from router.splits import assert_no_leakage, grouped_split
 
-LOADER_VERSION = "routerbench-loader-1.0"
+LOADER_VERSION = "routerbench-loader-1.1"  # 1.1: gold letters for multiple choice (T07)
 ROUTERBENCH_GRADER_VERSION = "routerbench-0shot"
 
 MAIN_SOURCES = ("mmlu", "hellaswag", "gsm8k", "arc-challenge", "winogrande", "mbpp", "mt-bench")
@@ -99,6 +102,46 @@ def load_gsm8k_gold(train: pd.DataFrame) -> dict[str, float]:
     return gold
 
 
+MCQ_SOURCES = ("mmlu", "arc-challenge", "winogrande", "hellaswag")
+_ANSWER_LETTER = re.compile(r"\(?([A-E])\b")
+_OPTION_LABEL = re.compile(r"(?:^|\s)([A-E])\)")
+
+
+def answer_letter(cell) -> str | None:
+    """The option letter a model's response starts with ("A", "(B)", "C) ..."), or None."""
+    turns = parse_turns(cell)
+    m = _ANSWER_LETTER.match(turns[0].strip()) if turns else None
+    return m.group(1) if m else None
+
+
+def option_labels(prompt: str) -> set[str]:
+    """Option letters offered in a multiple-choice prompt ("A) ...", "B) ...")."""
+    return set(_OPTION_LABEL.findall(str(prompt)))
+
+
+def mcq_gold_letters(df: pd.DataFrame) -> pd.DataFrame:
+    """Gold letter per row, voted by every model that answered correctly.
+
+    Returns columns `gold` (letter or None), `votes` (number of correct models) and `conflict`
+    (correct models disagreed, so no gold is set). Uses every model in the file, not only the
+    configured ones: more voters, more coverage.
+    """
+    models = sorted(c[: -len("|total_cost")] for c in df.columns if str(c).endswith("|total_cost"))
+    letters = {}
+    for m in models:
+        if m not in df.columns or f"{m}|model_response" not in df.columns:
+            continue
+        correct = pd.to_numeric(df[m], errors="coerce") == 1
+        letters[m] = df[f"{m}|model_response"].map(answer_letter).where(correct)
+    votes = pd.DataFrame(letters, index=df.index)
+    n = votes.notna().sum(axis=1)
+    distinct = votes.nunique(axis=1)
+    first = votes.bfill(axis=1).iloc[:, 0] if len(votes.columns) else pd.Series(None, index=df.index)
+    gold = first.where(distinct == 1)
+    return pd.DataFrame({"gold": gold.astype(object).where(gold.notna(), None),
+                         "votes": n.astype(int), "conflict": distinct > 1})
+
+
 @dataclass
 class LoadResult:
     corpus: pd.DataFrame
@@ -155,6 +198,25 @@ def load_routerbench(
         reference.loc[gold[~unmatched].index] = gold[~unmatched].map(lambda g: f"{g:g}")
         is_gsm = work["source"] == "gsm8k"
 
+    is_mcq = work["source"].isin(MCQ_SOURCES)
+    gold_votes = pd.Series(0, index=work.index)
+    if is_mcq.any():
+        g = mcq_gold_letters(work.loc[is_mcq])
+        offered = work.loc[is_mcq, "query"].map(option_labels)
+        valid = [x is not None and x in opts for x, opts in zip(g["gold"], offered)]
+        reference.loc[g.index[valid]] = g.loc[valid, "gold"]
+        gold_votes.loc[g.index] = g["votes"]
+        mcq_report = {}
+        for s_name, idx in work.loc[is_mcq].groupby("source").groups.items():
+            have = reference.loc[idx].notna()
+            mcq_report[s_name] = {"items": int(len(idx)), "with_gold": int(have.sum()),
+                                  "share": round(float(have.mean()), 4),
+                                  "conflicts": int(g.loc[idx, "conflict"].sum())}
+        report["gold_letters"] = mcq_report
+        n_conf = int(g["conflict"].sum())
+        if n_conf:
+            warnings.append(f"{n_conf} multiple-choice questions: correct models disagreed on the letter; no gold set.")
+
     score_rows = []
     bad = set()
     for m in models:
@@ -199,10 +261,13 @@ def load_routerbench(
         "group_id": work["group_id"].to_numpy(),
         "split": work["split"].to_numpy(),
         "prompt": work["query"].to_numpy(),
-        "reference": reference.loc[work.index].to_numpy(),
+        "reference": [None if pd.isna(x) else x for x in reference.loc[work.index]],
         "meta": [json.dumps({"eval_name": e, "rb_oracle": None if oracle is None else str(o),
-                             "rb_file": source_file, "loader": LOADER_VERSION})
-                 for e, o in zip(work["eval_name"], oracle if oracle is not None else [None] * len(work))],
+                             "rb_file": source_file, "loader": LOADER_VERSION,
+                             **({"gold_votes": int(v)} if s in MCQ_SOURCES else {})})
+                 for e, o, s, v in zip(work["eval_name"],
+                                       oracle if oracle is not None else [None] * len(work),
+                                       work["source"], gold_votes.loc[work.index])],
     })
     empty = corpus["prompt"].str.len() == 0
     if empty.any():

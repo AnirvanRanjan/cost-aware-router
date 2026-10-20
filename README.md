@@ -27,7 +27,7 @@ Copy `.env.example` to `.env` for API keys. `.env` is gitignored.
 Generated data isn't in git. Each version is a GitHub release named after its fingerprint:
 
 ```bash
-gh release download data-d9ef5869b99739aa -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
+gh release download data-3f774421cc116201 -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
 python scripts/verify_data.py            # must print "Same data as everyone else."
 ```
 

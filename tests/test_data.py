@@ -122,3 +122,55 @@ def test_headroom_table(rb, gold):
     res = load_routerbench(rb, large=L, small=[S], gsm8k_gold=gold)
     t = headroom_table(res.corpus, res.scores, L, [S])
     assert t.loc["mmlu", "headroom vs mixtral-8x7b-chat"] == pytest.approx(2 / 3)
+
+
+# ---- T07: gold letters for multiple choice -------------------------------------------------
+
+def _mcq_frame():
+    rows = [
+        # qid, eval, L response, S response, L score, S score
+        ("mmlu-a.val.0", "mmlu-anatomy", "A", "B", 1, 0),        # only GPT-4 right -> A
+        ("mmlu-a.val.1", "mmlu-anatomy", "(C)", "C) yes", 1, 1),  # both right, agree -> C
+        ("mmlu-a.val.2", "mmlu-anatomy", "D", "B", 0, 0),        # nobody right -> no gold
+        ("mmlu-a.val.3", "mmlu-anatomy", "A", "B", 1, 1),        # both "right", disagree -> no gold
+        ("mmlu-a.val.4", "mmlu-anatomy", "E", "A", 1, 0),        # E isn't an offered option -> no gold
+        ("winogrande.dev.0", "winogrande", "B", "A", 1, 0),
+        ("hellaswag.0", "hellaswag", "A)", "B)", 0, 1),
+    ]
+    out = []
+    for i, (qid, ev, lr, sr, ls, ss) in enumerate(rows):
+        opts = "A) x\nB) y" if ev == "winogrande" else "A) w\nB) x\nC) y\nD) z"
+        out.append(_row(qid, ev, [f"Question {i}?\n{opts}\nAnswer:"], lr, sr, ls, ss))
+    df = pd.DataFrame(out)
+    df[L] = df[L].astype(object)
+    df[S] = df[S].astype(object)
+    return df
+
+
+def test_gold_letters_are_voted_by_correct_models():
+    res = load_routerbench(_mcq_frame(), large=L, small=[S])
+    ref = res.corpus.set_index("qid")["reference"]
+    assert ref["mmlu-a.val.0"] == "A"
+    assert ref["mmlu-a.val.1"] == "C"
+    assert ref["winogrande.dev.0"] == "B"
+    assert ref["hellaswag.0"] == "B"
+    for qid in ("mmlu-a.val.2", "mmlu-a.val.3", "mmlu-a.val.4"):
+        assert ref[qid] is None
+
+
+def test_gold_letter_report_and_warnings():
+    res = load_routerbench(_mcq_frame(), large=L, small=[S])
+    g = res.report["gold_letters"]
+    assert g["mmlu"] == {"items": 5, "with_gold": 2, "share": 0.4, "conflicts": 1}
+    assert g["winogrande"]["share"] == 1.0
+    assert any("disagreed" in w for w in res.warnings)
+    meta = json.loads(res.corpus.set_index("qid").loc["mmlu-a.val.1", "meta"])
+    assert meta["gold_votes"] == 2
+
+
+def test_answer_letter_parsing():
+    from router.data import answer_letter, option_labels
+    assert answer_letter("['A']") == "A"
+    assert answer_letter("['(B) because']") == "B"
+    assert answer_letter("['Comment']") is None
+    assert option_labels("Q?\nA) x\nB) y\nC) z") == {"A", "B", "C"}
