@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """T12 deliverable (briefs/B.md): extract BAAI/bge-base-en-v1.5 embeddings for all prompts.
 
-    python scripts/02_extract_embeddings.py --corpus artifacts/routerbench/corpus.parquet --out artifacts/features/features.parquet
+    python scripts/03_extract_embeddings.py --corpus artifacts/routerbench/corpus.parquet --out artifacts/features/features.parquet
 """
 from __future__ import annotations
 
