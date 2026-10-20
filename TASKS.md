@@ -4,7 +4,7 @@ The project ends with **the router working live on a Mac**. That one requirement
 the demo can't use Mixtral or GPT-4 (neither runs on a laptop, and GPT-4 costs money), so it needs
 its own model pair, and a router trained for that pair. This file lists every remaining task, in order.
 
-Owners: **A** Data (Ani) · **B** Features & router · **C** Evaluation & statistics ·
+Owners: **A** Data (Ani) · **B** Features & router (HSID007) · **C** Evaluation & statistics ·
 **D** Systems & demo (kartiken07, has the M2). **All** = whole team. IDs are stable; reference them
 in branch names and PRs (e.g. `b/T12-embeddings`).
 
@@ -26,7 +26,7 @@ Then review the open PRs: #3 audit, #4 loader + decisions, the dedup PR, and thi
 | Who | Do this now | Why it can't wait |
 |---|---|---|
 | **A** · Ani | ✅ T58 decided (repo stays public). ✅ T35 code written (`router/trackb.py`), ready for Qwen's results. Next: **T07 gold answer letters** (B's grader needs them), then the embedding dedup pass when B hands over F2. | T35 is on the critical path to the headline result |
-| **B** | Full brief: `briefs/B.md`. **T32 first:** the `mcq_logprob` grader. Then T10–T12 (heuristics, TF-IDF, `bge-base` embeddings) on the real corpus, and hand the F2 file to A for the embedding dedup pass. | D needs T32 before Qwen can be scored on MMLU, ARC and Winogrande |
+| **B** · HSID007 | Full brief: `briefs/B.md`. **T32 first:** the `mcq_logprob` grader. Then T10–T12 (heuristics, TF-IDF, `bge-base` embeddings) on the real corpus, and hand the F2 file to A for the embedding dedup pass. | D needs T32 before Qwen can be scored on MMLU, ARC and Winogrande |
 | **C** | T05 (two-line fix), then T20–T21: metrics and the exact threshold sweep, tested on synthetic data and then run on the Mixtral scores already in the release. | The first real Pareto curve (week 8) is built on these |
 | **D** · kartiken07 | **T30 first:** `generate.py` with the MLX client and the cache. Then T31 (batched decoding), T06 (branch protection) and T40 (Gemini key on the M2). | T30 → T33 is the longest chain in the project: Qwen's overnight runs feed both the headline and the demo |
 
