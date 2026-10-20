@@ -54,3 +54,8 @@ artifacts/    gitignored. Parquets and manifests live in the shared drive, named
 2. **Artifacts are not git.** Shared drive, content-hash names, never emailed.
 3. **Nobody regenerates responses without bumping the manifest version.**
 4. **Every module owner writes their own tests**, and the τ solver's tests matter most.
+
+## Licence
+
+Code: [MIT](LICENSE). The data releases are derived from RouterBench (withmartian/routerbench)
+and GSM8K (openai/gsm8k) and stay under those datasets' own terms.
