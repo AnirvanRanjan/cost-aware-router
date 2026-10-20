@@ -6,17 +6,20 @@ in the live demo a query arrives with no label saying which benchmark it is from
 from __future__ import annotations
 
 import math
+from pathlib import Path
 import re
 from typing import Any, Sequence
 
 import numpy as np
+import pandas as pd
 import scipy.sparse
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import FeatureUnion
 
+from router import schema
 from router.graders import parse_options
 
-VERSION = "features-1.1"
+VERSION = "features-1.2"
 
 _PUNCT_CHARS = set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
 _SENT_SPLIT = re.compile(r"[.!?]+(?:\s+|\Z)")
@@ -305,3 +308,123 @@ def extract_f1_by_split(
         features_by_split[split_name] = extractor.transform(split_prompts)
 
     return features_by_split, extractor
+
+
+class SentenceEmbeddingExtractor:
+    """F2 sentence embedding extractor (DESIGN.md §1.3, briefs/B.md T12).
+
+    Encodes prompts using BAAI/bge-base-en-v1.5 with L2 normalization.
+    Tracks truncation for prompts exceeding max_length (512 tokens).
+    """
+
+    def __init__(
+        self,
+        model_name: str = "BAAI/bge-base-en-v1.5",
+        batch_size: int = 64,
+        max_length: int = 512,
+        normalize_embeddings: bool = True,
+        device: str | None = None,
+        model: Any = None,
+    ):
+        self.model_name = model_name
+        self.batch_size = batch_size
+        self.max_length = max_length
+        self.normalize_embeddings = normalize_embeddings
+        self.device = device or self._detect_device()
+        self.model = model
+
+    @staticmethod
+    def _detect_device() -> str:
+        try:
+            import torch
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                return "mps"
+            if torch.cuda.is_available():
+                return "cuda"
+        except Exception:
+            pass
+        return "cpu"
+
+    def _load_model(self):
+        if self.model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError as e:
+                raise ImportError("sentence-transformers is required for SentenceEmbeddingExtractor.") from e
+            self.model = SentenceTransformer(self.model_name, device=self.device)
+            self.model.max_seq_length = self.max_length
+
+    def encode(
+        self, prompts: Sequence[str] | str, show_progress_bar: bool = False
+    ) -> tuple[np.ndarray, int]:
+        """Encode prompts into dense normalized embeddings.
+
+        Returns:
+            embeddings: np.ndarray of shape (N, dim)
+            n_truncated: number of prompts exceeding max_length
+        """
+        self._load_model()
+        if isinstance(prompts, str):
+            prompts = [prompts]
+        clean_prompts = [str(p) if p is not None else "" for p in prompts]
+
+        # Check truncation count via tokenizer if accessible
+        n_truncated = 0
+        tokenizer = getattr(self.model, "tokenizer", None)
+        if tokenizer is not None and hasattr(tokenizer, "encode"):
+            for p in clean_prompts:
+                try:
+                    toks = tokenizer.encode(p, add_special_tokens=True, truncation=False)
+                    if len(toks) > self.max_length:
+                        n_truncated += 1
+                except Exception:
+                    pass
+
+        embeddings = self.model.encode(
+            clean_prompts,
+            batch_size=self.batch_size,
+            normalize_embeddings=self.normalize_embeddings,
+            show_progress_bar=show_progress_bar,
+            convert_to_numpy=True,
+        )
+        return np.asarray(embeddings, dtype=np.float32), n_truncated
+
+
+def build_f2_features(
+    corpus: pd.DataFrame,
+    extractor: SentenceEmbeddingExtractor | None = None,
+    output_path: str | Path | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Generate F2 sentence embeddings for a corpus and format according to schema.FEATURES.
+
+    Returns:
+        df: DataFrame conforming to schema.FEATURES (qid, feature_set='F2', vector)
+        report: Dict containing metadata (n_prompts, dim, n_truncated)
+    """
+    if "qid" not in corpus.columns or "prompt" not in corpus.columns:
+        raise ValueError("corpus dataframe must contain 'qid' and 'prompt' columns.")
+
+    if extractor is None:
+        extractor = SentenceEmbeddingExtractor()
+
+    prompts = corpus["prompt"].tolist()
+    embeddings, n_truncated = extractor.encode(prompts)
+
+    vectors = [embeddings[i].tolist() for i in range(len(corpus))]
+    df = pd.DataFrame({
+        "qid": corpus["qid"].astype(str).tolist(),
+        "feature_set": ["F2"] * len(corpus),
+        "vector": vectors,
+    })
+
+    schema.validate(df, schema.FEATURES)
+
+    if output_path is not None:
+        schema.write(df, schema.FEATURES, output_path)
+
+    report = {
+        "n_prompts": len(df),
+        "dim": embeddings.shape[1] if embeddings.ndim == 2 else len(vectors[0]),
+        "n_truncated": n_truncated,
+    }
+    return df, report

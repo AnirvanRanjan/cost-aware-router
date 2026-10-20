@@ -1,11 +1,13 @@
-"""Unit tests for F0 heuristics and F1 TF-IDF features (DESIGN.md §1.3, briefs/B.md T10 & T11)."""
+"""Unit tests for F0 heuristics, F1 TF-IDF, and F2 embeddings (DESIGN.md §1.3, briefs/B.md T10-T12)."""
 import numpy as np
 import pandas as pd
 import pytest
 
 from router.features import (
     HEURISTIC_NAMES,
+    SentenceEmbeddingExtractor,
     TfidfFeatureExtractor,
+    build_f2_features,
     extract_f1_by_split,
     heuristics,
 )
@@ -126,3 +128,77 @@ def test_f1_tfidf_fitting_never_sees_cal_or_test():
     word_vocab = fitted_ext.word_vec.vocabulary_
     assert "cal_canary_super_unique_token" not in word_vocab, "LEAKAGE: cal token found in fitted vocabulary!"
     assert "test_canary_super_unique_token" not in word_vocab, "LEAKAGE: test token found in fitted vocabulary!"
+
+
+class FakeSentenceTransformer:
+    """Mock SentenceTransformer model for fast deterministic unit testing."""
+
+    def __init__(self, dim: int = 16):
+        self.dim = dim
+        self.max_seq_length = 512
+
+        class FakeTokenizer:
+            def encode(self, text, add_special_tokens=True, truncation=False):
+                return list(range(len(text.split())))
+
+        self.tokenizer = FakeTokenizer()
+
+    def encode(
+        self,
+        prompts,
+        batch_size=64,
+        normalize_embeddings=True,
+        show_progress_bar=False,
+        convert_to_numpy=True,
+    ):
+        rng = np.random.default_rng(42)
+        n = len(prompts)
+        vecs = rng.normal(size=(n, self.dim)).astype(np.float32)
+        if normalize_embeddings:
+            norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+            vecs = vecs / np.maximum(norms, 1e-12)
+        return vecs
+
+
+def test_sentence_embedding_extractor_with_mock():
+    mock_model = FakeSentenceTransformer(dim=32)
+    extractor = SentenceEmbeddingExtractor(
+        max_length=5,
+        model=mock_model,
+    )
+
+    prompts = [
+        "Short text.",  # 2 tokens <= 5 -> not truncated
+        "This is a longer prompt that exceeds the five token maximum limit.",  # 11 tokens > 5 -> truncated
+    ]
+    embs, n_trunc = extractor.encode(prompts)
+
+    assert embs.shape == (2, 32)
+    assert n_trunc == 1
+    # Check L2 normalized
+    norms = np.linalg.norm(embs, axis=1)
+    assert np.allclose(norms, 1.0)
+
+
+def test_build_f2_features_satisfies_schema_contract(tmp_path):
+    corpus = pd.DataFrame({
+        "qid": ["q1", "q2", "q3"],
+        "prompt": ["First prompt", "Second prompt", "Third prompt"],
+    })
+    mock_model = FakeSentenceTransformer(dim=16)
+    extractor = SentenceEmbeddingExtractor(model=mock_model)
+
+    out_file = tmp_path / "features.parquet"
+    df, report = build_f2_features(corpus, extractor=extractor, output_path=out_file)
+
+    assert len(df) == 3
+    assert set(df.columns) == {"qid", "feature_set", "vector"}
+    assert (df["feature_set"] == "F2").all()
+    assert report["dim"] == 16
+    assert report["n_prompts"] == 3
+
+    # Check that written file can be read and validated with schema
+    from router import schema
+    read_df = schema.read(out_file, schema.FEATURES)
+    assert len(read_df) == 3
+    assert len(read_df.iloc[0]["vector"]) == 16
