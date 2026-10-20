@@ -10,12 +10,32 @@ in branch names and PRs (e.g. `b/T12-embeddings`).
 
 ---
 
+## This week — start here
+
+Done already: the code foundation, the RouterBench audit, the loader with re-graded GSM8K (T03),
+near-duplicate grouping (T04), and kartiken07's measured M2 speeds. The data is a GitHub release:
+
+```bash
+gh release download data-d9ef5869b99739aa -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
+python scripts/verify_data.py        # must print "Same data as everyone else."
+```
+
+**Everyone, first:** read `DECISIONS.md` (D-05 to D-08 are new) and approve or object on PR #4.
+Then review the open PRs: #3 audit, #4 loader + decisions, the dedup PR, and this task plan.
+
+| Who | Do this now | Why it can't wait |
+|---|---|---|
+| **A** · Ani | T58: ask the guide about the public repo. Write the Track B alignment code for T35 now (Qwen's answers joined to RouterBench's GPT-4 scores by qid), so it is ready when Qwen's runs land. Run the embedding dedup pass as soon as B hands over F2. | T35 is on the critical path to the headline result |
+| **B** | **T32 first:** the `mcq_logprob` grader. Then T10–T12 (heuristics, TF-IDF, `bge-base` embeddings) on the real corpus, and hand the F2 file to A for the embedding dedup pass. | D needs T32 before Qwen can be scored on MMLU, ARC and Winogrande |
+| **C** | T05 (two-line fix), then T20–T21: metrics and the exact threshold sweep, tested on synthetic data and then run on the Mixtral scores already in the release. | The first real Pareto curve (week 8) is built on these |
+| **D** · kartiken07 | **T30 first:** `generate.py` with the MLX client and the cache. Then T31 (batched decoding), T06 (branch protection) and T40 (Gemini key on the M2). | T30 → T33 is the longest chain in the project: Qwen's overnight runs feed both the headline and the demo |
+
 ## The demo, decided up front
 
 | Piece | Choice | Why |
 |---|---|---|
 | Machine | The 16 GB M2 | It ran Qwen3.5-4B at 28.5 tok/s, measured |
-| Small model (local) | **Qwen3.5-4B, 4-bit, MLX** (~3 GB) | Measured speed; fits with room for everything else |
+| Small model (local) | **Qwen3.5-4B, 4-bit, MLX** (~3 GB) | Measured speed; fits with room for everything else. Also the headline result (DECISIONS D-08) |
 | Frontier model (API) | **Gemini 3 Flash, free tier**; GitHub Models GPT-4o-class as backup | $0; a live demo sends a few dozen queries, far under the free limits |
 | Router | Same architecture as Track A, **with the small-model head retrained on Qwen's own answers** | A router learns *when its small model fails*. Mixtral's failures aren't Qwen's |
 | Cost shown on screen | Frontier queries priced at Sonnet 4.6 list rate, local at $0 | Same cost model as the paper (DESIGN Rev A) |
@@ -34,10 +54,10 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 
 | ID | Owner | Task | Done when |
 |---|---|---|---|
-| T01 | All | Decide the model pairs: Mixtral main, Yi-34B second, Mistral-7B dropped, HellaSwag reported separately. Record it in `DECISIONS.md`. | Decision written and agreed in the group chat |
+| T01 | All | Agree the model pairs (DECISIONS D-05 to D-08): Qwen vs GPT-4 is the headline and the demo; Mixtral vs GPT-4 the development pair and the RouteLLM comparison; Yi-34B optional; Mistral-7B dropped; HellaSwag reported separately. | PR #4 approved by every lane |
 | T02 | All | Review and merge PR #3 (audit), then PR #4 (loader). One reviewer per lane on #4, since it changes `schema.py` and `costs.py`. | Both merged into `main` |
-| T03 | A | Set `small: [mixtral-8x7b, Yi-34B]` in `configs/datasets.yaml`, rerun the loader, upload `artifacts/routerbench/` to the shared drive under its content hash. | Hash posted in the group chat |
-| T04 | A | `router/dedup.py`: MinHash (5-gram shingles, Jaccard ≥ 0.8) + embedding cosine (≥ 0.95) → connected components → refined `group_id`; re-split; dedup report. | `assert_no_leakage` passes; report in `notes/` |
+| T03 | A | ✅ Done. Loader rerun with Mixtral + Yi-34B; data published as release `data-d9ef5869b99739aa`. | — |
+| T04 | A | ✅ Lexical pass done (585 pairs, `notes/dedup_report.md`). Remaining: the embedding pass, once B delivers F2 (T12). | Report shows the embedding pass ran |
 | T05 | C | Fix `estimate_spend.py` so measured and estimated speeds are labelled separately. | Output says which is which |
 | T06 | D | Branch protection on `main`, PR template, `CODEOWNERS` so any `schema.py` change requests every lane. | A test PR shows the rules |
 
@@ -59,10 +79,10 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 | T24 | C | Cost model M2 (hardware time) and a batch-API frontier baseline | — | Both baselines in every savings number |
 | T25 | C | `plot_pareto.py` panels A–D, with random and oracle on every plot | T20–T23 | First real Pareto figure (week-8 gate) |
 | T26 | C | Leave-one-subject-out evaluation on MMLU | T04, T25 | Grouped vs LOSO gap reported |
-| T27 | C | Headroom sweep: savings vs gap, across Mixtral, Yi-34B and Qwen | T25, T37 | One figure, three pairs |
-| T28 | C | **Lock the numbers**: CPT(95%) and savings on the untouched test split, with confidence intervals | all above | No number changes after this |
+| T27 | C | Headroom sweep: savings vs gap, across Mixtral and Qwen (and Yi-34B if time allows) | T25, T37 | One figure, two or three pairs |
+| T28 | C | **Lock the numbers**: CPT(95%) and savings on the untouched test split, with confidence intervals — **Qwen pair as the headline**, Mixtral pair as the comparison | all above | No number changes after this |
 
-## Track B · The Mac model (feeds the demo)
+## Track B · The Mac model (the headline result and the demo)
 
 | ID | Owner | Task | Needs | Done when |
 |---|---|---|---|---|
