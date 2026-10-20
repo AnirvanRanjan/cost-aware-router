@@ -1,4 +1,4 @@
-# Brief: Person B · Features & Router
+# Brief: Person B · Features & Router (@HSID007)
 
 You turn a question's text into features, and features into two calibrated predictions: how well
 the **small** model will do on it (`ŝ_S`) and how well the **frontier** model will (`ŝ_L`). Lane C
