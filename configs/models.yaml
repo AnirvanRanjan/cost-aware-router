@@ -32,6 +32,7 @@ models:
   gpt-4-1106-preview:          {price_as: claude-sonnet-4.6}
   mistralai/mixtral-8x7b-chat: {provider: local, input: 0, output: 0}
   mistralai/mistral-7b-chat:   {provider: local, input: 0, output: 0}
+  zero-one-ai/Yi-34B-Chat:     {provider: local, input: 0, output: 0}
 
 sources:
   anthropic: https://platform.claude.com/docs/en/about-claude/pricing
