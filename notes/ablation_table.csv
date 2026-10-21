@@ -1,0 +1,9 @@
+Config,AUC,"rho(delta_hat, delta)",CPT(95%),Savings @ PGR .95,APGR
+Random router,0.5496,0.1174,0.895,10.5%,0.5367
+F0 heuristics + LogReg,0.7807,0.2542,0.945,5.3%,0.5607
+F1 TF-IDF + LogReg,0.744,0.1176,0.93,6.8%,0.5201
+XGBoost (F0 + F2),0.7376,0.6167,0.725,27.1%,0.7099
+F2 embeddings + MLP,0.6237,0.3699,0.85,14.9%,0.6396
+F2 + F0 (headline),0.6379,0.4671,0.87,13.0%,0.666
++ cost-normalized rule (v2),0.6294,0.4604,0.87,13.0%,0.6643
+Oracle router,1.0,1.0,0.475,52.1%,0.8309
