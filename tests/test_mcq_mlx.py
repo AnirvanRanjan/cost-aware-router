@@ -9,7 +9,7 @@ from router.mcq_mlx import MLXOptionScorer
 class FakeTokenizer:
     """Mock tokenizer simulating Qwen's chat template and tokenization."""
 
-    def __init__(self):
+    def __init__(self, support_thinking: bool = True):
         # Specific token IDs for clean letters and space-prefixed letters
         self.vocab = {
             "A": 100,
@@ -24,9 +24,16 @@ class FakeTokenizer:
             " E": 501,
         }
         self.chat_template_called = False
+        self.support_thinking = support_thinking
+        self.last_enable_thinking = None
 
-    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=True):
+    def apply_chat_template(
+        self, messages, tokenize=False, add_generation_prompt=True, **kwargs
+    ):
+        if not self.support_thinking and "enable_thinking" in kwargs:
+            raise TypeError("apply_chat_template() got an unexpected keyword argument 'enable_thinking'")
         self.chat_template_called = True
+        self.last_enable_thinking = kwargs.get("enable_thinking")
         assert add_generation_prompt is True
         content = messages[0]["content"]
         return f"<|im_start|>user\n{content}<|im_end|>\n<|im_start|>assistant\n"
@@ -132,3 +139,27 @@ def test_scorer_handles_variable_labels_and_empty():
     # 5 options (ARC)
     lps_5 = scorer.option_logprobs("Prompt", ["A", "B", "C", "D", "E"])
     assert set(lps_5.keys()) == {"A", "B", "C", "D", "E"}
+
+
+def test_scorer_disables_thinking_mode_for_qwen():
+    """Verify enable_thinking=False is passed to apply_chat_template for Qwen3."""
+    tokenizer = FakeTokenizer(support_thinking=True)
+    model = FakeModel()
+    scorer = MLXOptionScorer(model=model, tokenizer=tokenizer)
+
+    scorer.option_logprobs("Sample question A) 1 B) 2", ["A", "B"])
+    assert tokenizer.chat_template_called is True
+    assert tokenizer.last_enable_thinking is False
+
+
+def test_scorer_fallback_when_thinking_kwarg_unsupported():
+    """Verify graceful fallback if tokenizer does not accept enable_thinking."""
+    tokenizer = FakeTokenizer(support_thinking=False)
+    model = FakeModel()
+    scorer = MLXOptionScorer(model=model, tokenizer=tokenizer)
+
+    # Should not raise TypeError
+    lps = scorer.option_logprobs("Sample question A) 1 B) 2", ["A", "B"])
+    assert tokenizer.chat_template_called is True
+    assert set(lps.keys()) == {"A", "B"}
+

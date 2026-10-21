@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """T14 deliverable (briefs/B.md): Two-head MLP router trained across 5 seeds.
 
-    python scripts/04_train_two_head.py --corpus artifacts/synthetic/corpus.parquet \\
-                                        --scores artifacts/synthetic/scores.parquet \\
+    python scripts/04_train_two_head.py --corpus artifacts/routerbench/corpus.parquet \
+                                        --scores artifacts/routerbench/scores.parquet \
                                         --out artifacts/predictions/predictions.parquet
 """
 from __future__ import annotations
@@ -19,14 +19,26 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from router import schema
+from router.costs import PriceTable
 from router.features import SentenceEmbeddingExtractor, heuristics
 from router.models import TwoHeadRouter, fuse_features, spearman_rho, train_two_head_multi_seed
 
 
 def main() -> None:
+    default_corpus = (
+        Path("artifacts/routerbench/corpus.parquet")
+        if Path("artifacts/routerbench/corpus.parquet").exists()
+        else Path("artifacts/synthetic/corpus.parquet")
+    )
+    default_scores = (
+        Path("artifacts/routerbench/scores.parquet")
+        if Path("artifacts/routerbench/scores.parquet").exists()
+        else Path("artifacts/synthetic/scores.parquet")
+    )
+
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--corpus", type=Path, default=Path("artifacts/synthetic/corpus.parquet"))
-    ap.add_argument("--scores", type=Path, default=Path("artifacts/synthetic/scores.parquet"))
+    ap.add_argument("--corpus", type=Path, default=default_corpus)
+    ap.add_argument("--scores", type=Path, default=default_scores)
     ap.add_argument("--features", type=Path, default=None, help="Optional precomputed F2 features.parquet")
     ap.add_argument("--out", type=Path, default=Path("artifacts/predictions/predictions.parquet"))
     ap.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44, 45, 46])
@@ -55,8 +67,23 @@ def main() -> None:
 
     wide = scores.pivot(index="qid", columns="model", values="score")
     models = list(wide.columns)
-    large_model = args.large or models[0]
-    small_model = args.small or models[-1]
+
+    # For RouterBench real data, default pair is the Mixtral pair (briefs/B.md):
+    # gpt-4-1106-preview (frontier) vs mistralai/mixtral-8x7b-chat (small)
+    if not args.large:
+        large_model = "gpt-4-1106-preview" if "gpt-4-1106-preview" in models else models[0]
+    else:
+        large_model = args.large
+
+    if not args.small:
+        small_model = (
+            "mistralai/mixtral-8x7b-chat"
+            if "mistralai/mixtral-8x7b-chat" in models
+            else (models[-1] if len(models) > 1 else models[0])
+        )
+    else:
+        small_model = args.small
+
     if large_model == small_model and len(models) > 1:
         small_model = models[1]
     print(f"Routing pair: large={large_model}, small={small_model}")
@@ -70,12 +97,28 @@ def main() -> None:
     s_L = wide[large_model].to_numpy(dtype=float)
     gap = s_L - s_S
 
+    # Compute c_hat_L using the project's official PriceTable (DESIGN.md §3.2)
+    scores_L = scores[scores["model"] == large_model].set_index("qid")
+    if "mean_n_in" in scores_L.columns and "mean_n_out" in scores_L.columns:
+        price_table = PriceTable.load()
+        n_in = scores_L.loc[common_qids, "mean_n_in"].to_numpy(dtype=float)
+        n_out = scores_L.loc[common_qids, "mean_n_out"].to_numpy(dtype=float)
+        c_hat_L = price_table.query_cost(large_model, n_in, n_out)
+    else:
+        c_hat_L = None
+
     print(f"Extracting F0 heuristic features for {len(c):,} prompts...")
     X_f0, f0_names = heuristics(c["prompt"].tolist())
 
     if args.features and args.features.exists():
         print(f"Reading precomputed F2 features from {args.features}...")
         feat_df = schema.read(args.features, schema.FEATURES)
+        feat_map = dict(zip(feat_df["qid"], feat_df["vector"]))
+        X_f2 = np.array([feat_map[q] for q in common_qids], dtype=np.float32)
+        X_fused = fuse_features(X_f2, X_f0)
+    elif Path("artifacts/features/features.parquet").exists():
+        print(f"Reading precomputed F2 features from artifacts/features/features.parquet...")
+        feat_df = schema.read(Path("artifacts/features/features.parquet"), schema.FEATURES)
         feat_map = dict(zip(feat_df["qid"], feat_df["vector"]))
         X_f2 = np.array([feat_map[q] for q in common_qids], dtype=np.float32)
         X_fused = fuse_features(X_f2, X_f0)
@@ -107,6 +150,7 @@ def main() -> None:
         weight_decay=args.weight_decay,
         patience=args.patience,
         eval_splits=("cal", "test"),
+        c_hat_L=c_hat_L,
     )
 
     test_mask = c["split"] == "test"
