@@ -335,6 +335,7 @@ class TwoHeadRouter(BaseRouter):
         self.scaler_std: np.ndarray | None = None
         self.training_history: list[dict[str, float]] = []
         self.best_epoch: int = 0
+        self.calibrator: Any = None
 
     def fit(
         self,
@@ -493,7 +494,21 @@ class TwoHeadRouter(BaseRouter):
         self.is_fitted = True
         return self
 
-    def predict_proba(self, X: Any) -> tuple[np.ndarray, np.ndarray]:
+    def calibrate(
+        self,
+        X_cal: Any,
+        s_S_cal: np.ndarray,
+        s_L_cal: np.ndarray,
+    ) -> TwoHeadRouter:
+        """Fit isotonic calibration on calibration split (DESIGN.md § 2.3, briefs/B.md T15)."""
+        from router.calibrate import TwoHeadCalibrator
+
+        s_hat_S, s_hat_L = self.predict_proba(X_cal, calibrated=False)
+        self.calibrator = TwoHeadCalibrator()
+        self.calibrator.fit(s_hat_S, s_hat_L, s_S_cal, s_L_cal)
+        return self
+
+    def predict_proba(self, X: Any, calibrated: bool = False) -> tuple[np.ndarray, np.ndarray]:
         """Predict small model probability s_hat_S and frontier probability s_hat_L."""
         if not self.is_fitted or self.model is None:
             raise RuntimeError("TwoHeadRouter must be fitted before predicting.")
@@ -511,11 +526,16 @@ class TwoHeadRouter(BaseRouter):
         with torch.no_grad():
             X_t = torch.from_numpy(X_norm).to(dev)
             s_hat_S, s_hat_L = self.model.predict_proba(X_t)
-            return s_hat_S.cpu().numpy(), s_hat_L.cpu().numpy()
+            s_S_np = s_hat_S.cpu().numpy()
+            s_L_np = s_hat_L.cpu().numpy()
 
-    def predict_gap(self, X: Any) -> np.ndarray:
+        if calibrated and self.calibrator is not None:
+            s_S_np, s_L_np = self.calibrator.calibrate(s_S_np, s_L_np)
+        return s_S_np, s_L_np
+
+    def predict_gap(self, X: Any, calibrated: bool = False) -> np.ndarray:
         """Predict relative gap delta_hat = s_hat_L - s_hat_S in [-1, 1]."""
-        s_hat_S, s_hat_L = self.predict_proba(X)
+        s_hat_S, s_hat_L = self.predict_proba(X, calibrated=calibrated)
         delta = s_hat_L - s_hat_S
         return np.clip(delta, -1.0, 1.0)
 
@@ -525,9 +545,10 @@ class TwoHeadRouter(BaseRouter):
         qids: Sequence[str],
         seed: int | None = None,
         c_hat_L: np.ndarray | Sequence[float] | None = None,
+        calibrated: bool = False,
     ) -> pd.DataFrame:
         """Construct DataFrame satisfying schema.PREDICTIONS contract."""
-        s_hat_S, s_hat_L = self.predict_proba(X)
+        s_hat_S, s_hat_L = self.predict_proba(X, calibrated=calibrated)
         return super().to_predictions_df(
             X=X,
             qids=qids,
@@ -677,6 +698,7 @@ class TwoHeadRouter(BaseRouter):
             "scaler_mean": self.scaler_mean,
             "scaler_std": self.scaler_std,
             "state_dict": self.model.state_dict() if self.model else None,
+            "calibrator": self.calibrator,
             "is_fitted": self.is_fitted,
             "best_epoch": self.best_epoch,
         }
@@ -700,6 +722,7 @@ class TwoHeadRouter(BaseRouter):
         )
         router.scaler_mean = payload["scaler_mean"]
         router.scaler_std = payload["scaler_std"]
+        router.calibrator = payload.get("calibrator", None)
         router.is_fitted = payload["is_fitted"]
         router.best_epoch = payload.get("best_epoch", 0)
         if payload["state_dict"] is not None:
@@ -731,22 +754,29 @@ def train_two_head_multi_seed(
     patience: int = 7,
     eval_splits: Sequence[str] = ("cal", "test"),
     c_hat_L: np.ndarray | None = None,
+    calibrate_on_cal: bool = False,
 ) -> tuple[list[TwoHeadRouter], pd.DataFrame]:
-    """Train TwoHeadRouter across 5 seeds and generate schema.PREDICTIONS table (briefs/B.md T14).
+    """Train TwoHeadRouter across 5 seeds and generate schema.PREDICTIONS table (briefs/B.md T14 & T15).
 
     Anti-leakage:
       The training split (split == 'train') is the ONLY data fed to router.fit().
       Within router.fit(), an 85/15 sub-split is carved via grouped_split for early stopping.
+      When calibrate_on_cal=True, isotonic calibration is fitted on the calibration split ('cal').
       The evaluation splits (e.g. 'cal' and 'test') are only evaluated during inference.
     """
     split_arr = np.asarray(split)
     train_mask = split_arr == "train"
     eval_mask = np.isin(split_arr, eval_splits)
+    cal_mask = split_arr == "cal"
 
     X_train = X_fused[train_mask]
     s_S_train = s_S[train_mask]
     s_L_train = s_L[train_mask]
     g_train = np.asarray(group_ids)[train_mask]
+
+    X_cal = X_fused[cal_mask] if cal_mask.any() else None
+    s_S_cal = s_S[cal_mask] if cal_mask.any() else None
+    s_L_cal = s_L[cal_mask] if cal_mask.any() else None
 
     X_eval = X_fused[eval_mask]
     eval_qids = [q for q, m in zip(qids, eval_mask) if m]
@@ -769,6 +799,8 @@ def train_two_head_multi_seed(
             seed=seed,
         )
         router.fit(X_train, s_S_train, s_L_train, group_ids=g_train)
+        if calibrate_on_cal and X_cal is not None:
+            router.calibrate(X_cal, s_S_cal, s_L_cal)
         models.append(router)
 
         pred_df = router.to_predictions_df(
@@ -776,6 +808,7 @@ def train_two_head_multi_seed(
             qids=eval_qids,
             seed=seed,
             c_hat_L=eval_c_hat_L,
+            calibrated=calibrate_on_cal,
         )
         pred_frames.append(pred_df)
 
