@@ -30,14 +30,30 @@ class MLXOptionScorer:
         model, tokenizer = load(model_path, **kwargs)
         return cls(model=model, tokenizer=tokenizer)
 
-    def format_prompt(self, prompt: str) -> str:
-        """Apply Qwen's chat template with the corpus prompt as the user turn."""
+    def format_prompt(self, prompt: str, enable_thinking: bool = False) -> str:
+        """Apply Qwen's chat template with the corpus prompt as the user turn.
+
+        Note: Qwen3-family models have a thinking mode (<think>...</think>).
+        For multiple-choice option scoring via next-token logits, thinking mode
+        must be disabled (enable_thinking=False) so the next token is an answer letter
+        rather than <think>.
+        """
         messages = [{"role": "user", "content": prompt}]
         if hasattr(self.tokenizer, "apply_chat_template"):
             try:
                 return self.tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                    enable_thinking=enable_thinking,
                 )
+            except TypeError:
+                try:
+                    return self.tokenizer.apply_chat_template(
+                        messages, tokenize=False, add_generation_prompt=True
+                    )
+                except Exception:
+                    pass
             except Exception:
                 pass
         return prompt
@@ -118,17 +134,20 @@ class MLXOptionScorer:
             return out[-1].astype(np.float64)
         return out.astype(np.float64)
 
-    def option_logprobs(self, prompt: str, labels: Sequence[str]) -> dict[str, float]:
+    def option_logprobs(
+        self, prompt: str, labels: Sequence[str], enable_thinking: bool = False
+    ) -> dict[str, float]:
         """Compute the model's next-token log-probabilities for each option label.
 
         Applies the chat template with `prompt` as the user turn (adding the generation prompt),
+        disables thinking mode (`enable_thinking=False`) so Qwen3 does not emit `<think>`,
         runs one forward pass to get next-token logits, and reads each label.
         Takes the max over the label with and without a leading space ("A" vs " A").
         """
         if not labels:
             return {}
 
-        formatted = self.format_prompt(prompt)
+        formatted = self.format_prompt(prompt, enable_thinking=enable_thinking)
         input_ids = self._tokenize(formatted)
         next_logits = self._forward_logits(input_ids)
 
