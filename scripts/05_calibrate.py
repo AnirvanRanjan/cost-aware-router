@@ -33,8 +33,10 @@ from router.models import TwoHeadRouter, fuse_features, spearman_rho
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--corpus", type=Path, default=Path("artifacts/synthetic/corpus.parquet"))
-    ap.add_argument("--scores", type=Path, default=Path("artifacts/synthetic/scores.parquet"))
+    default_corpus = Path("artifacts/routerbench/corpus.parquet") if Path("artifacts/routerbench/corpus.parquet").exists() else Path("artifacts/synthetic/corpus.parquet")
+    default_scores = Path("artifacts/routerbench/scores.parquet") if Path("artifacts/routerbench/scores.parquet").exists() else Path("artifacts/synthetic/scores.parquet")
+    ap.add_argument("--corpus", type=Path, default=default_corpus)
+    ap.add_argument("--scores", type=Path, default=default_scores)
     ap.add_argument("--features", type=Path, default=None)
     ap.add_argument("--out-plot", type=Path, default=Path("notes/calibration_reliability.png"))
     ap.add_argument("--out-report", type=Path, default=Path("notes/calibration_report.md"))
@@ -56,8 +58,8 @@ def main() -> None:
 
     wide = scores.pivot(index="qid", columns="model", values="score")
     models = list(wide.columns)
-    large_model = models[0]
-    small_model = models[-1]
+    large_model = "gpt-4-1106-preview" if "gpt-4-1106-preview" in models else models[0]
+    small_model = "mistralai/mixtral-8x7b-chat" if "mistralai/mixtral-8x7b-chat" in models else (models[-1] if len(models) > 1 else models[0])
     if large_model == small_model and len(models) > 1:
         small_model = models[1]
     print(f"Routing pair: large={large_model}, small={small_model}")
