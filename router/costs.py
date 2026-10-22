@@ -42,7 +42,7 @@ class PriceTable:
         as_of: str,
         reference_frontier: str,
         reference_local: str,
-        hardware: dict[str, "Hardware"] | None = None,
+        hardware: dict[str, Hardware] | None = None,
     ):
         self.models = models
         self.hardware = hardware or {}
@@ -53,7 +53,7 @@ class PriceTable:
         self.reference_local = reference_local
 
     @classmethod
-    def load(cls, path: str | Path = DEFAULT_PRICES) -> "PriceTable":
+    def load(cls, path: str | Path = DEFAULT_PRICES) -> PriceTable:
         raw = yaml.safe_load(Path(path).read_text())
         models = {}
         for name, spec in raw["models"].items():
