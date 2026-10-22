@@ -371,14 +371,26 @@ class SentenceEmbeddingExtractor:
         # Check truncation count via tokenizer if accessible
         n_truncated = 0
         tokenizer = getattr(self.model, "tokenizer", None)
-        if tokenizer is not None and hasattr(tokenizer, "encode"):
-            for p in clean_prompts:
-                try:
-                    toks = tokenizer.encode(p, add_special_tokens=True, truncation=False)
-                    if len(toks) > self.max_length:
-                        n_truncated += 1
-                except Exception:
-                    pass
+        if tokenizer is not None:
+            try:
+                encoded = tokenizer(
+                    clean_prompts,
+                    truncation=False,
+                    padding=False,
+                    return_attention_mask=False,
+                    return_token_type_ids=False,
+                    verbose=False,
+                )
+                input_ids = encoded.get("input_ids", [])
+                n_truncated = sum(1 for ids in input_ids if len(ids) > self.max_length)
+            except Exception:
+                for p in clean_prompts:
+                    try:
+                        toks = tokenizer.encode(p, add_special_tokens=True, truncation=False)
+                        if len(toks) > self.max_length:
+                            n_truncated += 1
+                    except Exception:
+                        pass
 
         embeddings = self.model.encode(
             clean_prompts,
@@ -408,7 +420,7 @@ def build_f2_features(
         extractor = SentenceEmbeddingExtractor()
 
     prompts = corpus["prompt"].tolist()
-    embeddings, n_truncated = extractor.encode(prompts)
+    embeddings, n_truncated = extractor.encode(prompts, show_progress_bar=True)
 
     vectors = [embeddings[i].tolist() for i in range(len(corpus))]
     df = pd.DataFrame({
