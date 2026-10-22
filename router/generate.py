@@ -104,7 +104,9 @@ class GenerationCache:
         self.path = Path(path)
         if str(path) != ":memory:":
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(path))
+        # check_same_thread=False: the demo server reads and writes from worker threads; callers that
+        # share one cache across threads serialise access themselves (serve.py holds a lock).
+        self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS gens (key TEXT PRIMARY KEY, model TEXT, sample_idx INTEGER, "
             "text TEXT, n_in INTEGER, n_out INTEGER, latency_ms REAL, mean_logprob REAL, created REAL)"
@@ -242,6 +244,12 @@ class FakeClient:
             out.append(Generation(text, n_in=len(p) // 4, n_out=len(text) // 4, latency_ms=1.0, mean_logprob=-0.1))
         return out
 
+    def stream(self, prompt: str, params: GenParams):
+        """Yield the answer a word at a time (for the demo server's streaming path)."""
+        g = self.generate_batch([prompt], params, [0])[0]
+        for i, w in enumerate((g.text or "").split(" ")):
+            yield w if i == 0 else " " + w
+
 
 class MLXClient:
     """Local generation on Apple Silicon via mlx-lm. Loads the model once, on first use."""
@@ -296,6 +304,16 @@ class MLXClient:
         return Generation(text, n_in=int(n_in or len(tok.encode(text_in))), n_out=int(n_out),
                           latency_ms=(time.perf_counter() - t0) * 1000,
                           mean_logprob=(sum(lps) / len(lps)) if lps else None)
+
+    def stream(self, prompt: str, params: GenParams):
+        """Yield text pieces as the local model decodes them."""
+        from mlx_lm import stream_generate
+
+        model, tok = self._load()
+        for r in stream_generate(model, tok, self.format(prompt, params), max_tokens=params.max_tokens,
+                                 sampler=self._sampler(params)):
+            if r.text:
+                yield r.text
 
     def generate_batch(self, prompts, params, sample_idx):
         if self.max_batch <= 1 or len(prompts) == 1:
@@ -384,6 +402,30 @@ class OpenAICompatClient:
 
     def generate_batch(self, prompts, params, sample_idx):
         return [self.generate_one(p, params, j) for p, j in zip(prompts, sample_idx)]
+
+    def stream(self, prompt: str, params: GenParams):
+        """Yield text pieces from a streamed chat completion (server-sent events)."""
+        messages = ([{"role": "system", "content": params.system}] if params.system else []) + \
+                   [{"role": "user", "content": prompt}]
+        body = {"model": self.model_id, "messages": messages, "max_tokens": params.max_tokens,
+                "temperature": params.temperature, "top_p": params.top_p, "stream": True, **self.extra_body}
+        self._wait_turn()
+        with self.http.stream("POST", "chat/completions", json=body) as r:
+            if r.status_code != 200:
+                r.read()
+                raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+            for line in r.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    delta = json.loads(data)["choices"][0].get("delta") or {}
+                except (ValueError, KeyError, IndexError):
+                    continue
+                if delta.get("content"):
+                    yield delta["content"]
 
 
 # ----------------------------------------------------------------------------------------------------
