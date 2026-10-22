@@ -1,0 +1,35 @@
+# T45 demo set (DRAFT). Every query is checked with `python scripts/check_demo_set.py` against the
+# bundle the demo will use; swap out any query whose decision is not what `expect` says.
+# Rule of thumb for picking: easy = one fact or one step; hard = several dependent steps, or a trap.
+# Final check: after the Qwen-trained bundle exists (T41 + Track B), not before.
+queries:
+  # ---- 10 easy: should stay on the Mac ----
+  - {id: easy-01, expect: local, query: "What is the capital of Australia?"}
+  - {id: easy-02, expect: local, query: "What is 15% of 80?"}
+  - {id: easy-03, expect: local, query: "Which planet is known as the Red Planet? A) Venus B) Mars C) Jupiter D) Saturn"}
+  - {id: easy-04, expect: local, query: "Translate 'good morning' into French."}
+  - {id: easy-05, expect: local, query: "A pencil costs $2 and a notebook costs $5. How much do 3 pencils and 1 notebook cost?"}
+  - {id: easy-06, expect: local, query: "What gas do plants absorb from the air for photosynthesis?"}
+  - {id: easy-07, expect: local, query: "Give me a synonym for 'happy'."}
+  - {id: easy-08, expect: local, query: "How many minutes are there in 3 hours?"}
+  - {id: easy-09, expect: local, query: "Who wrote 'Romeo and Juliet'?"}
+  - {id: easy-10, expect: local, query: "Is 17 a prime number?"}
+
+  # ---- 10 hard: should go to the frontier ----
+  - {id: hard-01, expect: frontier, query: "A store raises a price by 20%, then lowers the new price by 20%. A customer pays $96. What was the original price, and what single percentage change would have had the same effect?"}
+  - {id: hard-02, expect: frontier, query: "Prove that the square root of 2 is irrational."}
+  - {id: hard-03, expect: frontier, query: "Three friends split a bill. Ana pays twice what Ben pays, and Ben pays $6 more than Chen. Together they pay $114 including a 14% tip on the food. How much was the food, and how much did each person pay?"}
+  - {id: hard-04, expect: frontier, query: "In how many ways can 8 people sit around a round table if two particular people refuse to sit next to each other?"}
+  - {id: hard-05, expect: frontier, query: "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. A second ball costs 20% more than the first. How much do the bat and both balls cost together?"}
+  - {id: hard-06, expect: frontier, query: "Explain why the halting problem is undecidable, with the diagonal argument written out step by step."}
+  - {id: hard-07, expect: frontier, query: "A train leaves at 9:40 at 72 km/h. A second train leaves the same station at 10:05 on the same track at 90 km/h. At what time and how far from the station does the second train catch up?"}
+  - {id: hard-08, expect: frontier, query: "Which statement about the Treaty of Westphalia (1648) is most accurate? A) It ended the Hundred Years' War B) It established the principle of state sovereignty in Europe C) It created the Holy Roman Empire D) It unified Italy"}
+  - {id: hard-09, expect: frontier, query: "Find all real x such that |x - 3| + |x + 1| = 6, and show your working."}
+  - {id: hard-10, expect: frontier, query: "A drug test is 99% sensitive and 95% specific. If 1% of people use the drug, what is the probability that someone who tests positive actually uses it?"}
+
+  # ---- 5 open chat: no fixed answer, either route is fine ----
+  - {id: chat-01, expect: any, query: "Suggest three names for a study group that works on AI projects."}
+  - {id: chat-02, expect: any, query: "Write a two-line poem about a rainy evening in Dehradun."}
+  - {id: chat-03, expect: any, query: "What are the pros and cons of running a language model on a laptop instead of in the cloud?"}
+  - {id: chat-04, expect: any, query: "Summarise what a model router does in one sentence for someone who is not technical."}
+  - {id: chat-05, expect: any, query: "Plan a 30-minute revision session for an operating systems exam."}

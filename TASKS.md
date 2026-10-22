@@ -107,7 +107,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 | T42 | D | `serve.py` (FastAPI): `/route` (decision only), `/chat` (route, generate, stream), `/stats` (running totals). Qwen and the router load once at start-up. | T30, T41 | Router decision p99 < 15 ms on the M2 |
 | T43 | D | Web page: query box → **routed to local or API**, predicted ŝ_S / ŝ_L against τ\*, the answer streaming in, latency, this query's cost, **money saved so far vs always-frontier** | T42 | Works in Safari and Chrome |
 | T44 | C | **Replay mode**: push 200 held-out test queries through the live router, showing accuracy against always-frontier and cost saved as it runs. This is the Pareto point, live. | T42 | Matches the offline result for the same 200 |
-| T45 | A | Demo set: 10 easy queries the router should keep local, 10 hard ones it should send out, 5 open chat prompts. Check every decision in advance. | T41 | Every planned query routes as expected |
+| T45 | A | Demo set: 10 easy queries the router should keep local, 10 hard ones it should send out, 5 open chat prompts. Check every decision in advance. ✅ Draft in `configs/demo_set.yaml`, checker `scripts/check_demo_set.py`; interim router fails 8/10 easy ones (`notes/demo_set_check.md`) | T41 | Every planned query routes as expected |
 | T46 | D | Offline mode: cached frontier answers for the demo and replay sets; `--offline` flag | T44, T45 | Full demo runs with Wi-Fi off |
 | T47 | D | Soak test on the M2: one hour of queries; record memory peak, first-token latency, thermal throttling | T43 | Numbers in `notes/demo_perf.md` |
 | T48 | All | Record the backup video of the full demo | T46 | Video on the shared drive |
@@ -117,7 +117,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 
 | ID | Owner | Task | Done when |
 |---|---|---|---|
-| T50 | A | Chapter: datasets, the audit, re-grading, dedup and splits | Draft reviewed by one teammate |
+| T50 | A | Chapter: datasets, the audit, re-grading, dedup and splits. Outline + every number: `notes/chapter_A_facts.md` | Draft reviewed by one teammate |
 | T51 | B | Chapter: features and router architecture, the ablation ladder | Draft reviewed |
 | T52 | C | Chapter: cost model, threshold selection, guarantees, results | Draft reviewed |
 | T53 | D | Chapter: local inference, serving, the demo, performance on the M2 | Draft reviewed |
