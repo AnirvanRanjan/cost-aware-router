@@ -1,4 +1,6 @@
-# Ablation Ladder: Full Configuration Comparison (DESIGN.md § 4.3)
+# [SYNTHETIC] Ablation Ladder: Full Configuration Comparison (DESIGN.md § 4.3)
+
+> **Note**: Evaluated on synthetic data (`artifacts/synthetic`). Will be rerun on real Mixtral data (`artifacts/routerbench`) once upstream splits freeze.
 
 *Generated: 2026-10-21 15:18:02 UTC*
 *Deliverable for Lane B (T16: The core ablation table of your chapter)*
