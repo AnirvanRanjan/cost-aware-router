@@ -7,8 +7,15 @@ Two passes, both within one dataset at a time (splits are made per dataset):
    different questions don't look alike just because of the template. MinHash + LSH proposes
    candidate pairs; every candidate is then checked exactly (Jaccard, or containment for "same text plus a
    prefix", ≥ 0.8 by default), so the result has no MinHash noise.
-2. **Semantic, optional.** Cosine similarity of sentence embeddings (≥ 0.95). Run it by passing
-   the F2 vectors from features.parquet once lane B has computed them (T12).
+2. **Semantic, optional.** Cosine similarity of sentence embeddings, run by passing the F2 vectors
+   from features.parquet (T12). Raw bge cosine is dominated by a dataset's prompt template: on
+   RouterBench, raw cosine >= 0.95 chained all 895 MMLU moral-scenarios items into one group because
+   they share a long fixed preamble. So vectors are first **centred**: the mean vector of their
+   template group (the dataset, or the MMLU subject) is subtracted and the residual re-normalised,
+   which removes the shared template and keeps what is specific to each question. Pairs need
+   residual cosine >= 0.90. Checked by hand on RouterBench: what remains is same-passage MMLU
+   questions, the same question filed under two subjects, GSM8K rewrites ("Josie" / "Amanda", same
+   numbers), and HellaSwag items continuing the same video scene.
 
 Pairs are joined into connected components; each component becomes one group_id, and the corpus is
 re-split so that no group crosses train / cal / test.
@@ -24,7 +31,7 @@ import pandas as pd
 
 from router.splits import assert_no_leakage, grouped_split
 
-DEDUP_VERSION = "dedup-1.0"
+DEDUP_VERSION = "dedup-1.1"   # 1.1: embedding pass on template-centred vectors
 _MERSENNE = np.uint64((1 << 61) - 1)
 _WORD = re.compile(r"[a-z0-9]+")
 
@@ -150,6 +157,29 @@ def embedding_pairs(vectors: np.ndarray, *, threshold: float = 0.95, block: int 
     return sorted(out)
 
 
+def center_embeddings(corpus: pd.DataFrame, embeddings: dict[str, np.ndarray], *,
+                      min_group: int = 20) -> dict[str, np.ndarray]:
+    """Subtract each template group's mean vector and re-normalise (see module docstring).
+
+    Template group = (source, subject) when the subject has at least `min_group` items with vectors,
+    else the source. Questions without a vector are skipped.
+    """
+    c = corpus[corpus["qid"].isin(embeddings.keys())]
+    subj = c["subject"].fillna("").astype(str)
+    key = c["source"].astype(str) + "/" + subj
+    small = key.map(key.value_counts()) < min_group
+    key = key.where(~small, c["source"].astype(str))
+    out: dict[str, np.ndarray] = {}
+    for _, qs in c.groupby(key.to_numpy())["qid"]:
+        qs = qs.tolist()
+        mat = np.stack([np.asarray(embeddings[q], dtype=np.float32) for q in qs])
+        mat = mat / np.clip(np.linalg.norm(mat, axis=1, keepdims=True), 1e-12, None)
+        res = mat - mat.mean(axis=0, keepdims=True)
+        res = res / np.clip(np.linalg.norm(res, axis=1, keepdims=True), 1e-12, None)
+        out.update(zip(qs, res))
+    return out
+
+
 class _UnionFind:
     def __init__(self, items):
         self.parent = {x: x for x in items}
@@ -178,12 +208,15 @@ def dedup_corpus(
     *,
     embeddings: dict[str, np.ndarray] | None = None,
     jaccard_threshold: float = 0.8,
-    cosine_threshold: float = 0.95,
+    cosine_threshold: float = 0.90,
+    center: bool = True,
     fractions: dict | None = None,
     seed: int = 7,
 ) -> DedupResult:
     """Merge near-duplicates into shared group_ids and re-split each dataset with no group crossing."""
     corpus = corpus.reset_index(drop=True)
+    if embeddings is not None and center:
+        embeddings = center_embeddings(corpus, embeddings)
     rows = []
     for source, idx in corpus.groupby("source").groups.items():
         idx = list(idx)
@@ -220,6 +253,7 @@ def dedup_corpus(
         "version": DEDUP_VERSION,
         "thresholds": {"jaccard": jaccard_threshold, "cosine": cosine_threshold if embeddings is not None else None},
         "embedding_pass": embeddings is not None,
+        "embedding_centered": bool(embeddings is not None and center),
         "pairs_by_source_and_method": {f"{s}/{m}": int(n) for (s, m), n in pairs.groupby(["source", "method"]).size().items()},
         "groups_merged_away": int(old_group.nunique() - corpus["group_id"].nunique()),
         "rows_in_multi_item_groups": int(corpus["group_id"].map(sizes).gt(1).sum()),
