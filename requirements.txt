@@ -7,3 +7,4 @@ pytest>=8
 scikit-learn>=1.4
 matplotlib>=3.8
 huggingface_hub>=0.24   # step 1: download RouterBench
+httpx>=0.27             # router/generate.py: OpenAI-compatible APIs (Gemini, GitHub Models)

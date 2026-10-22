@@ -1,0 +1,31 @@
+# Model clients for router/generate.py (T30). The key is the model name written to responses.parquet
+# and used in the cache key; keep it equal to the name in configs/models.yaml so costs line up.
+# API keys come from .env (see .env.example), never from this file.
+clients:
+  # ---- local, Apple Silicon only (mlx-lm) ----
+  qwen3.5-4b:
+    kind: mlx
+    path: mlx-community/Qwen3.5-4B-MLX-4bit      # the model D-07 demos; measured 28.5 tok/s on the M2
+    max_batch: 8                                 # T31: set from scripts/bench_batch.py on the M2
+  llama-3.2-3b:
+    kind: mlx
+    path: mlx-community/Llama-3.2-3B-Instruct-4bit
+    max_batch: 8
+
+  # ---- frontier, free tier ----
+  gemini-3-flash:
+    kind: openai_compat
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    model_id: gemini-3-flash-preview             # T40: confirm with `python scripts/09_generate.py --list-models gemini-3-flash`
+    api_key_env: GEMINI_API_KEY
+    rpm: 8                                       # stay under the free-tier per-minute cap; T40 checks the real one
+  github-gpt-4.1-mini:
+    kind: openai_compat
+    base_url: https://models.github.ai/inference
+    model_id: openai/gpt-4.1-mini
+    api_key_env: GITHUB_TOKEN
+    rpm: 10
+
+  # ---- no model: pipeline dry runs and tests ----
+  fake:
+    kind: fake
