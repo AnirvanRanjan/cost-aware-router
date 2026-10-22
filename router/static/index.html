@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cost-Aware Router</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f6f8fa; --fg: #1f2328; --muted: #656d76; --line: #d0d7de;
+    --local: #1a7f37; --frontier: #8250df; --accent: #0969da; --warn: #bc4c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d1117; --panel: #161b22; --fg: #e6edf3; --muted: #8b949e; --line: #30363d;
+            --local: #3fb950; --frontier: #a371f7; --accent: #58a6ff; --warn: #f0883e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-top: 16px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  form { display: flex; gap: 8px; }
+  textarea { flex: 1; min-height: 64px; resize: vertical; padding: 10px; border-radius: 8px; font: inherit;
+             border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  button { padding: 0 18px; border: 0; border-radius: 8px; background: var(--accent); color: #fff;
+           font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 13px;
+           letter-spacing: .04em; color: #fff; }
+  .badge.local { background: var(--local); } .badge.frontier { background: var(--frontier); }
+  .decision { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0 10px; min-height: 28px; }
+  .bars { display: grid; grid-template-columns: 70px 1fr 48px; gap: 6px 10px; align-items: center; font-size: 13px; }
+  .bar { position: relative; height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; }
+  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
+  .bar.delta > b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--fg); }
+  .answer { white-space: pre-wrap; margin-top: 14px; min-height: 120px; padding: 12px; border-radius: 8px;
+            background: var(--bg); border: 1px solid var(--line); }
+  .meta { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .meta b { color: var(--fg); font-weight: 600; }
+  .stat { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .stat:last-child { border-bottom: 0; }
+  .big { font-size: 28px; font-weight: 700; color: var(--local); }
+  .err { color: var(--warn); }
+  .examples button { background: transparent; color: var(--accent); border: 1px solid var(--line);
+                     padding: 4px 10px; margin: 4px 4px 0 0; font-weight: 400; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Cost-Aware Router</h1>
+    <span class="sub" id="health">connecting…</span>
+  </header>
+
+  <div class="grid">
+    <section class="card">
+      <form id="f">
+        <textarea id="q" placeholder="Ask anything. The router decides: answer on this Mac, or call the frontier model."></textarea>
+        <button id="go">Ask</button>
+      </form>
+      <div class="examples" id="examples"></div>
+
+      <div class="decision" id="decision"></div>
+      <div class="bars" id="bars" hidden>
+        <span>ŝ local</span><div class="bar"><i id="bS" style="background:var(--local)"></i></div><span id="vS"></span>
+        <span>ŝ frontier</span><div class="bar"><i id="bL" style="background:var(--frontier)"></i></div><span id="vL"></span>
+        <span>Δ̂ vs τ*</span><div class="bar delta"><i id="bD" style="background:var(--accent)"></i><b id="tau"></b></div><span id="vD"></span>
+      </div>
+      <div class="answer" id="answer"></div>
+      <div class="meta" id="meta"></div>
+    </section>
+
+    <aside class="card">
+      <div class="sub">Saved so far vs always-frontier</div>
+      <div class="big" id="saved">$0.0000</div>
+      <div class="sub" id="savedShare">&nbsp;</div>
+      <div style="margin-top:12px">
+        <div class="stat"><span>Queries</span><b id="n">0</b></div>
+        <div class="stat"><span>Answered locally</span><b id="nl">0</b></div>
+        <div class="stat"><span>Sent to frontier</span><b id="nf">0</b></div>
+        <div class="stat"><span>Spent</span><b id="spent">$0</b></div>
+        <div class="stat"><span>Always-frontier would cost</span><b id="allf">$0</b></div>
+        <div class="stat"><span>Router latency p50 / p99</span><b id="lat">–</b></div>
+      </div>
+      <p class="sub">Frontier priced at list rates even on a free tier, so “saved” is what this traffic would have cost.</p>
+    </aside>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const usd = (x) => "$" + (x < 0.01 ? x.toFixed(5) : x.toFixed(4));
+const EXAMPLES = [
+  "What is the capital of France?",
+  "Natalia sold clips to 48 friends in April, and half as many in May. How many clips did she sell altogether?",
+  "Prove that there are infinitely many primes of the form 4k+3.",
+  "Which of these is a mammal? A) shark B) dolphin C) trout D) eel",
+];
+
+let health = null;
+fetch("/health").then(r => r.json()).then(h => {
+  health = h;
+  $("health").textContent = `local: ${h.small} · frontier: ${h.large} · τ* = ${h.tau.toFixed(3)} (rule ${h.rule})` +
+    (h.offline ? " · OFFLINE" : "") + (h.bundle && h.bundle.interim ? " · interim router" : "");
+}).catch(() => { $("health").textContent = "server not reachable"; });
+
+for (const e of EXAMPLES) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = e.length > 48 ? e.slice(0, 46) + "…" : e;
+  b.onclick = () => { $("q").value = e; ask(); };
+  $("examples").appendChild(b);
+}
+
+function showTotals(t) {
+  $("saved").textContent = usd(t.saved_usd);
+  $("savedShare").textContent = t.all_frontier_usd > 0 ? `${(100 * t.saved_share).toFixed(1)}% cheaper` : " ";
+  $("n").textContent = t.queries; $("nl").textContent = t.local; $("nf").textContent = t.frontier;
+  $("spent").textContent = usd(t.spent_usd); $("allf").textContent = usd(t.all_frontier_usd);
+  $("lat").textContent = `${t.router_ms_p50.toFixed(1)} / ${t.router_ms_p99.toFixed(1)} ms`;
+}
+fetch("/stats").then(r => r.json()).then(showTotals).catch(() => {});
+
+function ask(ev) {
+  if (ev) ev.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return;
+  $("go").disabled = true;
+  $("answer").textContent = ""; $("meta").innerHTML = ""; $("decision").innerHTML = "";
+  const t0 = performance.now();
+  const es = new EventSource("/chat/stream?q=" + encodeURIComponent(q));
+  es.addEventListener("route", (e) => {
+    const d = JSON.parse(e.data);
+    const where = d.route === "frontier" ? "FRONTIER" : "LOCAL";
+    $("decision").innerHTML = `<span class="badge ${d.route}">${where}</span>` +
+      `<span class="sub">${d.model} · router ${d.router_ms.toFixed(1)} ms${d.forced ? " · forced" : ""}</span>`;
+    $("bars").hidden = false;
+    $("bS").style.width = (100 * d.s_hat_S) + "%"; $("vS").textContent = d.s_hat_S.toFixed(2);
+    $("bL").style.width = (100 * d.s_hat_L) + "%"; $("vL").textContent = d.s_hat_L.toFixed(2);
+    // Δ̂ in [-1, 1] drawn on [0, 100%]; τ* marker on the same scale (rule v1)
+    const pos = (x) => Math.max(0, Math.min(100, 50 + 50 * x));
+    $("bD").style.width = pos(d.delta_hat) + "%"; $("vD").textContent = d.delta_hat.toFixed(2);
+    $("tau").style.left = (d.rule === "v1" ? pos(d.tau) : 50) + "%";
+  });
+  es.addEventListener("token", (e) => { $("answer").textContent += JSON.parse(e.data); });
+  es.addEventListener("error", (e) => {
+    if (e.data) $("answer").innerHTML += `<div class="err">${JSON.parse(e.data)}</div>`;
+    es.close(); $("go").disabled = false;
+  });
+  es.addEventListener("done", (e) => {
+    const d = JSON.parse(e.data);
+    $("meta").innerHTML = `<span>first token <b>${d.first_token_ms ? d.first_token_ms.toFixed(0) : "–"} ms</b></span>` +
+      `<span>total <b>${(performance.now() - t0).toFixed(0)} ms</b></span>` +
+      `<span>this query <b>${usd(d.cost_usd)}</b></span>` + (d.cached ? `<span>cached</span>` : "");
+    showTotals(d.totals);
+    es.close(); $("go").disabled = false;
+  });
+}
+$("f").addEventListener("submit", ask);
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(e); });
+</script>
+</body>
+</html>

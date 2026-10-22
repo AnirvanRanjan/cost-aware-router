@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from router.costs import PriceTable, estimate_run  # noqa: E402
+from router.costs import PriceTable, crossover_tokens_per_sec, estimate_run, local_query_cost  # noqa: E402
 
 FRONTIER = [
     ("claude-sonnet-4.6", False), ("claude-sonnet-4.6", True), ("claude-haiku-4.5", True),
@@ -48,13 +48,30 @@ def main() -> None:
         print(f"  {model:<20}{mode:<7}{_usd(g.usd):>9}{_usd(m.usd):>9}{_usd(g.usd + m.usd):>9}{note}")
 
     print(f"\nSMALL ARM (k={args.k_small} on GSM8K): local wall-clock. MMLU is logprob scoring and takes minutes.")
-    print(f"  {'model':<20}{'tok/s':>7}{'batch 1':>10}{f'batch x{args.batch_speedup:g}':>12}")
+    print(f"  {'model':<20}{'tok/s':>7}  {'source':<9}{'batch 1':>10}{f'batch x{args.batch_speedup:g}':>12}")
     for model in LOCAL:
         one = estimate_run(t, model, n_items=args.gsm8k, k=args.k_small, mean_in=GSM8K_TOKENS[0], mean_out=GSM8K_TOKENS[1])
         fast = estimate_run(t, model, n_items=args.gsm8k, k=args.k_small, mean_in=GSM8K_TOKENS[0],
                             mean_out=GSM8K_TOKENS[1], batch_speedup=args.batch_speedup)
-        print(f"  {model:<20}{t[model].tokens_per_sec:>7g}{one.hours:>8.1f} h{fast.hours:>10.1f} h")
-    print("\n  tok/s are ESTIMATES for an M2 base chip. Lane D replaces them with measured values in week 1.")
+        src = "measured" if t[model].measured else "ESTIMATE"
+        print(f"  {model:<20}{t[model].tokens_per_sec:>7g}  {src:<9}{one.hours:>8.1f} h{fast.hours:>10.1f} h")
+    n_meas = sum(t[m].measured for m in LOCAL)
+    print(f"\n  'measured' = timed on the team's M2 (configs/models.yaml); 'ESTIMATE' = not timed yet "
+          f"({n_meas}/{len(LOCAL)} measured).")
+    print(f"  The batch x{args.batch_speedup:g} column is an ASSUMED speed-up until lane D measures it (T31).")
+
+    if t.hardware:
+        hw_name, hw = next(iter(t.hardware.items()))
+        print(f"\nCOST MODEL M2 ({hw_name}, all inputs ASSUMED, see configs/models.yaml): "
+              f"${hw.usd_per_hour:.3f} per hour of use")
+        n_in, n_out = GSM8K_TOKENS
+        print(f"  per GSM8K query ({n_in} in / {n_out} out):")
+        for model in LOCAL:
+            usd = local_query_cost(n_in, n_out, hardware=hw, tokens_per_sec=t[model].tokens_per_sec)
+            print(f"    {model:<20}${usd * 1000:.3f} per 1k queries")
+        for api in ("claude-haiku-4.5", "gemini-3-flash", "gpt-5-nano"):
+            x = crossover_tokens_per_sec(t, api, hardware=hw, n_in=n_in, n_out=n_out)
+            print(f"  local beats {api:<17} on price above {x:,.1f} tok/s")
 
 
 if __name__ == "__main__":

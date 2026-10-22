@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build Track B: Qwen's scores beside RouterBench's GPT-4 scores, same questions, same splits (T35).
 
-    python scripts/03_build_trackb.py
-    python scripts/03_build_trackb.py --responses artifacts/trackb/qwen_responses.parquet \\
+    python scripts/10_build_trackb.py
+    python scripts/10_build_trackb.py --responses artifacts/trackb/qwen_responses.parquet \\
                                       --mcq artifacts/trackb/qwen_mcq_scores.parquet
 
 Inputs from lane D's runs on the M2 (either or both; partial runs are fine):

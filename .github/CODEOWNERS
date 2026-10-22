@@ -1,0 +1,30 @@
+# Who must review what (T06). GitHub requests these reviewers automatically on every PR.
+# Lane C's GitHub username is still missing: add it on the lines marked (C).
+
+# Contracts are shared by every lane: a change needs every lane's eyes (DESIGN.md §4.1).
+/router/schema.py            @AnirvanRanjan @HSID007 @kartiken07
+/configs/models.yaml         @AnirvanRanjan @kartiken07
+
+# Lane A: data and corpus
+/router/data.py              @AnirvanRanjan
+/router/dedup.py             @AnirvanRanjan
+/router/splits.py            @AnirvanRanjan
+/router/routerbench_audit.py @AnirvanRanjan
+/router/trackb.py            @AnirvanRanjan
+
+# Lane B: features and router
+/router/features.py          @HSID007
+/router/models.py            @HSID007
+/router/calibrate.py         @HSID007
+/router/mcq_mlx.py           @HSID007
+/router/graders.py           @HSID007 @AnirvanRanjan
+
+# Lane C: evaluation and statistics (C)
+/router/eval.py              @HSID007
+/router/threshold.py         @AnirvanRanjan
+/router/costs.py             @AnirvanRanjan @kartiken07
+
+# Lane D: systems and demo
+/router/generate.py          @kartiken07
+/router/serve.py             @kartiken07
+/configs/clients.yaml        @kartiken07
