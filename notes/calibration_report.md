@@ -1,4 +1,6 @@
-# T15 Calibration Report: Isotonic Regression & Reliability Analysis
+# [SYNTHETIC] T15 Calibration Report: Isotonic Regression & Reliability Analysis
+
+> **Note**: Evaluated on synthetic data (`artifacts/synthetic`). Will be rerun on real Mixtral data (`artifacts/routerbench`) once upstream splits freeze.
 
 *Generated: 2026-10-21 15:06:55 UTC*
 *Deliverable for Lane B (DESIGN.md § 2.3, briefs/B.md T15)*
