@@ -89,3 +89,54 @@ def test_price_as_must_point_at_a_priced_model(tmp_path):
                    "reference_local: a\nmodels:\n  a: {price_as: nope}\n")
     with pytest.raises(KeyError, match="price_as"):
         PriceTable.load(bad)
+
+
+# ---- T05 / T24: measured vs estimated speeds, cost model M2 -------------------------------------
+
+def test_measured_flag_marks_only_timed_models(prices):
+    assert prices["qwen3.5-4b"].measured and prices["llama-3.2-3b"].measured
+    assert not prices["phi-4-mini"].measured
+
+
+def test_hardware_hourly_rate_is_amortisation_plus_energy():
+    from router.costs import Hardware
+    hw = Hardware("m", price_usd=876, lifetime_years=1, hours_per_day=24 / 10, watts=1000, usd_per_kwh=0.5)
+    # 876 / (365 * 2.4) = $1/h amortised, + 1 kW * $0.5/kWh
+    assert hw.usd_per_hour == pytest.approx(1.5)
+
+
+def test_local_query_cost_adds_prefill_when_known():
+    from router.costs import Hardware, local_query_cost
+    hw = Hardware("m", price_usd=876, lifetime_years=1, hours_per_day=2.4, watts=0, usd_per_kwh=0,
+                  prefill_tokens_per_sec=10)
+    # 3600 out tokens at 1 tok/s = 1 h = $1; 36,000 in tokens at 10 tok/s = 1 h = $1
+    assert local_query_cost(36_000, 3600, hardware=hw, tokens_per_sec=1) == pytest.approx(2.0)
+
+
+def test_crossover_is_where_local_and_api_cost_the_same(prices):
+    from router.costs import crossover_tokens_per_sec, local_query_cost
+    hw = prices.hardware["m2_16gb"]
+    x = crossover_tokens_per_sec(prices, "claude-haiku-4.5", hardware=hw, n_in=120, n_out=250)
+    api = prices.query_cost("claude-haiku-4.5", 120, 250)
+    assert local_query_cost(120, 250, hardware=hw, tokens_per_sec=x) == pytest.approx(api)
+    assert local_query_cost(120, 250, hardware=hw, tokens_per_sec=2 * x) < api
+
+
+def test_pair_costs_m1_and_m2(prices):
+    import pandas as pd
+    from router.costs import pair_costs
+    scores = pd.DataFrame({
+        "qid": ["a", "b", "a", "b"],
+        "model": ["mistralai/mixtral-8x7b-chat"] * 2 + ["gpt-4-1106-preview"] * 2,
+        "score": [1.0, 0.0, 1.0, 1.0], "grader": "x", "grader_version": "1",
+        "mean_n_in": [100.0, 200.0, 100.0, 200.0], "mean_n_out": [50.0, 10.0, 60.0, 20.0],
+    })
+    m1 = pair_costs(prices, scores, small="mistralai/mixtral-8x7b-chat", large="gpt-4-1106-preview")
+    assert (m1["c_S"] == 0).all()
+    assert m1.loc["a", "c_L"] == pytest.approx((100 * 3 + 60 * 15) / 1e6)  # priced as Sonnet 4.6
+    batch = pair_costs(prices, scores, small="mistralai/mixtral-8x7b-chat", large="gpt-4-1106-preview",
+                       frontier_batch=True)
+    assert batch["c_L"].to_numpy() == pytest.approx(m1["c_L"].to_numpy() * 0.5)
+    m2 = pair_costs(prices, scores, small="mistralai/mixtral-8x7b-chat", large="gpt-4-1106-preview",
+                    cost_model="M2")
+    assert (m2["c_S"] > 0).all() and (m2["c_L"] == m1["c_L"]).all()
