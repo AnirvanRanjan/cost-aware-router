@@ -155,7 +155,7 @@ def test_gold_letters_are_voted_by_correct_models():
     assert ref["winogrande.dev.0"] == "B"
     assert ref["hellaswag.0"] == "B"
     for qid in ("mmlu-a.val.2", "mmlu-a.val.3", "mmlu-a.val.4"):
-        assert ref[qid] is None
+        assert pd.isna(ref[qid])
 
 
 def test_gold_letter_report_and_warnings():

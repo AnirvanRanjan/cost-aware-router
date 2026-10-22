@@ -2,7 +2,14 @@ import math
 
 import pytest
 
-from router.graders import extract_number, gsm8k_exact_match, gsm8k_gold, numeric_match
+from router.graders import (
+    extract_number,
+    gsm8k_exact_match,
+    gsm8k_gold,
+    mcq_score,
+    numeric_match,
+    parse_options,
+)
 
 
 @pytest.mark.parametrize("text, want", [
@@ -51,3 +58,65 @@ def test_numbers_copied_from_the_question_do_not_override_the_result():
     assert extract_number(r, question=q) == 3
     assert extract_number("6 minutes = 360 s; (4/3)*360 = 480\nShe eats 480 peanuts in 6 minutes.",
                           question="How many peanuts in 6 minutes?") == 480
+
+
+def test_parse_options_standard_formats():
+    # MMLU style A–D
+    p1 = "Which of the following is a bone?\nA. Femur\nB. Humerus\nC. Tibia\nD. Fibula\nAnswer:"
+    assert parse_options(p1) == ["A", "B", "C", "D"]
+
+    p2 = "Which statement?\n(A) First\n(B) Second\n(C) Third\n(D) Fourth"
+    assert parse_options(p2) == ["A", "B", "C", "D"]
+
+    p3 = "Which bone? A) x B) y C) z D) w"
+    assert parse_options(p3) == ["A", "B", "C", "D"]
+
+
+def test_parse_options_variable_counts():
+    # Winogrande 2 options (A–B)
+    w = "The trophy did not fit because _ was big. A) trophy B) case"
+    assert parse_options(w) == ["A", "B"]
+
+    # ARC 5 options (A–E)
+    arc5 = "Question?\n(A) 1\n(B) 2\n(C) 3\n(D) 4\n(E) 5"
+    assert parse_options(arc5) == ["A", "B", "C", "D", "E"]
+
+    # ARC 3 options (A–C)
+    arc3 = "Question?\nA: apple\nB: banana\nC: cherry"
+    assert parse_options(arc3) == ["A", "B", "C"]
+
+
+def test_parse_options_non_mcq_and_edge_cases():
+    assert parse_options("") == []
+    assert parse_options(None) == []
+    assert parse_options("Natalia sold 48 clips and 24 in May. Total?") == []
+
+    # Prompt with Vitamin A and Dr. A. Smith before the real options
+    tricky = "Dr. A. Smith studied Vitamin A. Which is true?\nA. Fact 1\nB. Fact 2\nC. Fact 3\nAnswer:"
+    assert parse_options(tricky) == ["A", "B", "C"]
+
+
+def test_mcq_score_probabilities():
+    # 4 equal options -> 0.25
+    equal_lps = {"A": -1.0, "B": -1.0, "C": -1.0, "D": -1.0}
+    assert mcq_score(equal_lps, "A") == pytest.approx(0.25)
+    assert mcq_score(equal_lps, "C") == pytest.approx(0.25)
+
+    # Dominant A -> ~1.0
+    dom_a = {"A": 10.0, "B": -10.0, "C": -10.0, "D": -10.0}
+    assert mcq_score(dom_a, "A") > 0.9999
+    assert mcq_score(dom_a, "B") < 0.0001
+
+    # Sum of probabilities across options equals 1.0
+    lps = {"A": -0.5, "B": -1.2, "C": -2.0, "D": -0.1}
+    total_p = sum(mcq_score(lps, opt) for opt in ["A", "B", "C", "D"])
+    assert total_p == pytest.approx(1.0)
+
+
+def test_mcq_score_edge_cases():
+    assert mcq_score({}, "A") == 0.0
+    assert mcq_score({"A": -1.0}, None) == 0.0
+    assert mcq_score({"A": -1.0, "B": -1.0}, "C") == 0.0
+    # Case insensitivity
+    assert mcq_score({"a": 0.0, "b": -10.0}, "A") > 0.99
+    assert mcq_score({"A": 0.0, "B": -10.0}, "a") > 0.99
