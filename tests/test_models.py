@@ -340,6 +340,7 @@ def test_simulated_f2_leakage_guard_on_real_data(tmp_path):
     """Verify scripts exit with error on real data if F2 features missing and --allow-simulated-f2 not passed."""
     import subprocess
     import sys
+    pytest.importorskip("torch")
 
     # Call 04_train_two_head.py pointing to a dummy non-synthetic corpus without features
     dummy_corpus = tmp_path / "real_corpus.parquet"
