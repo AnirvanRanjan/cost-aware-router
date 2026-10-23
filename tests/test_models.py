@@ -335,3 +335,64 @@ def test_retrain_small_head_freezes_trunk_and_large_head():
     # Small head must have updated
     assert not (head_S_weight_before == head_S_weight_after).all()
 
+
+def test_simulated_f2_leakage_guard_on_real_data(tmp_path):
+    """Verify scripts exit with error on real data if F2 features missing and --allow-simulated-f2 not passed."""
+    import subprocess
+    import sys
+    pytest.importorskip("torch")
+
+    # Call 04_train_two_head.py pointing to a dummy non-synthetic corpus without features
+    dummy_corpus = tmp_path / "real_corpus.parquet"
+    dummy_scores = tmp_path / "real_scores.parquet"
+    
+    # Run script with subprocess
+    cmd = [
+        sys.executable,
+        "scripts/04_train_two_head.py",
+        "--corpus", str(dummy_corpus),
+        "--scores", str(dummy_scores),
+        "--features", str(tmp_path / "nonexistent.parquet"),
+    ]
+    # Creating minimal files so it doesn't fail on missing corpus
+    from router import schema
+    import pandas as pd
+    
+    corpus_df = pd.DataFrame({
+        "qid": ["q1", "q2", "q3"],
+        "prompt": ["test 1", "test 2", "test 3"],
+        "split": ["train", "cal", "test"],
+        "group_id": ["g1", "g2", "g3"],
+        "source": ["arc-challenge", "arc-challenge", "arc-challenge"],
+        "subject": [None, None, None],
+        "reference": ["A", "B", "C"],
+        "meta": [None, None, None],
+    })
+    schema.write(corpus_df, schema.CORPUS, dummy_corpus)
+    
+    scores_df = pd.DataFrame({
+        "qid": ["q1", "q1", "q2", "q2", "q3", "q3"],
+        "model": [
+            "gpt-4-1106-preview", "mistralai/mixtral-8x7b-chat",
+            "gpt-4-1106-preview", "mistralai/mixtral-8x7b-chat",
+            "gpt-4-1106-preview", "mistralai/mixtral-8x7b-chat"
+        ],
+        "score": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+        "grader": ["mcq", "mcq", "mcq", "mcq", "mcq", "mcq"],
+        "grader_version": ["1.0", "1.0", "1.0", "1.0", "1.0", "1.0"],
+        "mean_n_in": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+        "mean_n_out": [5.0, 5.0, 5.0, 5.0, 5.0, 5.0],
+    })
+    schema.write(scores_df, schema.SCORES, dummy_scores)
+
+    # 1. Without --allow-simulated-f2 -> must fail with code 1
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 1
+    assert "Simulated F2 fallback uses the label (gap) and leaks on real data!" in res.stderr
+
+    # 2. With --allow-simulated-f2 -> succeeds
+    cmd_allow = cmd + ["--allow-simulated-f2", "--seeds", "42", "--epochs", "1", "--out", str(tmp_path / "preds.parquet")]
+    res_allow = subprocess.run(cmd_allow, capture_output=True, text=True)
+    assert res_allow.returncode == 0
+
+
