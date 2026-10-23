@@ -53,6 +53,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--epochs", type=int, default=30)
     ap.add_argument("--hidden-dim", type=int, default=256)
+    ap.add_argument("--allow-simulated-f2", action="store_true", default=False, help="Allow simulated F2 fallback (leaks labels, for synthetic tests only)")
     args = ap.parse_args()
 
     if not args.corpus.exists() or not args.scores.exists():
@@ -109,7 +110,21 @@ def main() -> None:
         feat_df = schema.read(args.features, schema.FEATURES)
         feat_map = dict(zip(feat_df["qid"], feat_df["vector"]))
         X_f2 = np.array([feat_map[q] for q in common_qids], dtype=np.float32)
+    elif Path("artifacts/features/features.parquet").exists() and not (args.features and not args.features.exists()):
+        print("Loading F2 sentence embeddings from artifacts/features/features.parquet...")
+        feat_df = schema.read(Path("artifacts/features/features.parquet"), schema.FEATURES)
+        feat_map = dict(zip(feat_df["qid"], feat_df["vector"]))
+        X_f2 = np.array([feat_map[q] for q in common_qids], dtype=np.float32)
     else:
+        is_synthetic = "synthetic" in str(args.corpus).lower()
+        if not is_synthetic and not args.allow_simulated_f2:
+            print(
+                "Error: No precomputed F2 features provided (--features). "
+                "Simulated F2 fallback uses the label (gap) and leaks on real data! "
+                "Provide real F2 features (--features) or pass --allow-simulated-f2 explicitly for synthetic testing.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         print("Using simulated F2 embeddings...")
         rng_f2 = np.random.default_rng(args.seed)
         X_f2 = rng_f2.standard_normal((len(common_qids), 64), dtype=np.float32)
