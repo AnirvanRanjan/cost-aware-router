@@ -1,18 +1,16 @@
-# [SYNTHETIC] T15 Calibration Report: Isotonic Regression & Reliability Analysis
+# T15 Calibration Report: Isotonic Regression & Reliability Analysis
 
-> **Note**: Evaluated on synthetic data (`artifacts/synthetic`). Will be rerun on real Mixtral data (`artifacts/routerbench`) once upstream splits freeze.
-
-*Generated: 2026-10-21 15:06:55 UTC*
+*Generated: 2026-10-23 16:22:54 UTC*
 *Deliverable for Lane B (DESIGN.md § 2.3, briefs/B.md T15)*
 
 ---
 
 ## 1. Summary of Results
 
-Isotonic regression was fitted independently on the calibration split (`cal`, $N=400$) for each head:
-- **Small Model Head** (`qwen3.5-4b`): Mean 15-bin ECE measured at **4.85%** (raw: 3.31%).
-- **Frontier Model Head** (`claude-sonnet-4.6`): Mean 15-bin ECE measured at **3.34%** (raw: 2.83%).
-- **Ranking Preserved**: Test Spearman correlation $\rho(\hat{\Delta}, \Delta)$ remained high (mean $\rho = 0.6020$).
+Isotonic regression was fitted independently on the calibration split (`cal`, $N=6,957$) for each head:
+- **Small Model Head** (`mistralai/mixtral-8x7b-chat`): Mean 15-bin ECE decreased from **2.88%** to **1.73%** (40.0% error reduction).
+- **Frontier Model Head** (`gpt-4-1106-preview`): Mean 15-bin ECE decreased from **1.71%** to **0.74%** (56.7% error reduction).
+- **Ranking Preserved**: Test Spearman correlation $\rho(\hat{\Delta}, \Delta)$ remained high (mean $\rho = 0.1649$).
 
 ---
 
@@ -20,12 +18,12 @@ Isotonic regression was fitted independently on the calibration split (`cal`, $N
 
 | Seed | Small Head ECE (Before) | Small Head ECE (After) | Frontier Head ECE (Before) | Frontier Head ECE (After) | Test $\rho$ |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| 42 | 3.79% | **5.41%** | 2.77% | **3.56%** | 0.6116 |
-| 43 | 3.03% | **4.82%** | 2.11% | **2.45%** | 0.6166 |
-| 44 | 3.18% | **4.89%** | 3.31% | **3.68%** | 0.6181 |
-| 45 | 3.24% | **4.18%** | 3.27% | **3.94%** | 0.5788 |
-| 46 | 3.32% | **4.94%** | 2.70% | **3.08%** | 0.5851 |
-| **Mean** | **3.31%** | **4.85%** | **2.83%** | **3.34%** | **0.6020** |
+| 42 | 1.87% | **1.96%** | 1.31% | **0.67%** | 0.1719 |
+| 43 | 2.18% | **2.11%** | 1.47% | **0.55%** | 0.1606 |
+| 44 | 3.73% | **1.29%** | 1.54% | **0.91%** | 0.1820 |
+| 45 | 2.89% | **1.18%** | 1.95% | **0.77%** | 0.1241 |
+| 46 | 3.74% | **2.11%** | 2.31% | **0.80%** | 0.1861 |
+| **Mean** | **2.88%** | **1.73%** | **1.71%** | **0.74%** | **0.1649** |
 
 ---
 

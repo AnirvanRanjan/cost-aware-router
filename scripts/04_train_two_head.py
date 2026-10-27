@@ -51,6 +51,8 @@ def main() -> None:
     ap.add_argument("--patience", type=int, default=7)
     ap.add_argument("--large", type=str, default=None)
     ap.add_argument("--small", type=str, default=None)
+    ap.add_argument("--allow-simulated-f2", action="store_true", default=False, help="Allow simulated F2 fallback (leaks labels, for synthetic tests only)")
+    ap.add_argument("--eval-splits", nargs="+", default=["train", "cal", "test"], help="Splits to generate predictions for (default: train cal test)")
     args = ap.parse_args()
 
     if not args.corpus.exists():
@@ -116,13 +118,22 @@ def main() -> None:
         feat_map = dict(zip(feat_df["qid"], feat_df["vector"]))
         X_f2 = np.array([feat_map[q] for q in common_qids], dtype=np.float32)
         X_fused = fuse_features(X_f2, X_f0)
-    elif Path("artifacts/features/features.parquet").exists():
+    elif Path("artifacts/features/features.parquet").exists() and not (args.features and not args.features.exists()):
         print(f"Reading precomputed F2 features from artifacts/features/features.parquet...")
         feat_df = schema.read(Path("artifacts/features/features.parquet"), schema.FEATURES)
         feat_map = dict(zip(feat_df["qid"], feat_df["vector"]))
         X_f2 = np.array([feat_map[q] for q in common_qids], dtype=np.float32)
         X_fused = fuse_features(X_f2, X_f0)
     else:
+        is_synthetic = "synthetic" in str(args.corpus).lower()
+        if not is_synthetic and not args.allow_simulated_f2:
+            print(
+                "Error: No precomputed F2 features provided (--features). "
+                "Simulated F2 fallback uses the label (gap) and leaks on real data! "
+                "Provide real F2 features (--features) or pass --allow-simulated-f2 explicitly for synthetic testing.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         print("Using synthetic embeddings / F0 features...")
         rng = np.random.default_rng(0)
         # Mock 768-d embeddings with signal aligned with gap if no precomputed F2 is provided
@@ -149,7 +160,7 @@ def main() -> None:
         lr=args.lr,
         weight_decay=args.weight_decay,
         patience=args.patience,
-        eval_splits=("cal", "test"),
+        eval_splits=tuple(args.eval_splits),
         c_hat_L=c_hat_L,
     )
 
