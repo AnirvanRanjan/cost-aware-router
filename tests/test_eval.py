@@ -15,6 +15,10 @@ from router.eval import (
     compute_routing_curve,
     evaluate_router_config,
     loso_subject_eval,
+    run_real_loso,
+    within_subject_eval,
+    WithinSubjectSummary,
+    RealLOSOSummary,
 )
 
 
@@ -179,3 +183,41 @@ def test_loso_rows_without_subject_are_pooled_as_a_fold():
     pooled_auc = evaluate_router_config("mix", scores, s_S, s_L).auc
     assert summary.pooled.auc == pytest.approx(pooled_auc)
     assert "(no subject)" in set(summary.subject_table["subject"])
+
+def test_within_subject_eval_and_alias():
+    scores, s_S, s_L, subjects = _mmlu_like()
+    summary = within_subject_eval("mmlu router", subjects, scores, s_S, s_L)
+    assert isinstance(summary, WithinSubjectSummary)
+    assert isinstance(summary, LOSOSummary)
+    assert list(summary.subject_table["subject"]) == list(SPECIFIC_SUBJECTS)
+
+
+def test_real_loso_retraining_and_gaps():
+    rng = np.random.default_rng(42)
+    n_samples = 300
+    subjects = np.array([f"subj_{i % 12}" for i in range(n_samples)], dtype=object)
+    y_S = rng.binomial(1, 0.4, n_samples).astype(float)
+    y_L = rng.binomial(1, 0.8, n_samples).astype(float)
+    gap = y_L - y_S
+    X = rng.standard_normal((n_samples, 16)).astype(np.float32)
+    X[:, 0] += (gap > 0).astype(float) * 2.0
+    tr_idx = np.arange(0, 200)
+    te_idx = np.arange(200, 300)
+    res = run_real_loso(
+        X_train=X[tr_idx],
+        y_train_S=y_S[tr_idx],
+        y_train_L=y_L[tr_idx],
+        subjects_train=subjects[tr_idx],
+        X_test=X[te_idx],
+        y_test_S=y_S[te_idx],
+        y_test_L=y_L[te_idx],
+        subjects_test=subjects[te_idx],
+        n_folds=4,
+        seed=42,
+    )
+    assert isinstance(res, RealLOSOSummary)
+    assert len(res.fold_table) > 0
+    assert "cpt_gap" in res.gaps
+    assert "savings_gap" in res.gaps
+    assert "worst_fold" in res.gaps
+    assert res.pooled_retrained.auc > 0.5

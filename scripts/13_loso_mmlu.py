@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
-"""T26: leave-one-subject-out (LOSO) evaluation on MMLU, grouped vs LOSO gap.
+"""T26: leave-one-subject-out (LOSO) evaluation on MMLU:
+1. Within-subject evaluation: scores existing router predictions per subject.
+2. True LOSO evaluation: groups subjects into ~10 folds, retrains LogisticRegression
+   on F2 with each subject fold's train rows removed, and scores that fold's test rows.
 
-    python scripts/13_loso_mmlu.py --corpus artifacts/routerbench/corpus.parquet \
-                                   --scores artifacts/routerbench/scores.parquet \
-                                   --predictions artifacts/predictions/all_interim.parquet
-
-For every router and decision rule (v1: delta_hat, v2: delta_hat per predicted dollar) in the
-predictions file, scores the MMLU test rows of each subject as its own held-out fold
-(`router.eval.loso_subject_eval`) and reports, per subject, AUC / CPT(95%) / savings@PGR .95 /
-APGR against the pooled (grouped-split) number. The headline output is the LOSO gap:
-        pooled - mean(per-subject),
-per metric, plus the worst subject. If subjects degrade the router, that shows up here and not in
-the pooled table alone (DESIGN.md §"Report both a random grouped split and a LOSO split").
+    python scripts/13_loso_mmlu.py --corpus artifacts/routerbench/corpus.parquet \\
+                                   --scores artifacts/routerbench/scores.parquet \\
+                                   --predictions artifacts/predictions/all_interim.parquet \\
+                                   --features artifacts/features/features.parquet
 
 Writes notes/loso_report.md.
 """
@@ -22,13 +18,14 @@ import datetime as dt
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from router import schema  # noqa: E402
 from router.costs import pair_costs, PriceTable  # noqa: E402
-from router.eval import loso_subject_eval  # noqa: E402
+from router.eval import within_subject_eval, run_real_loso  # noqa: E402
 
 RULES = ("v1", "v2")
 
@@ -53,71 +50,170 @@ def load_frame(pred_path, corpus_path, scores_path, small, large):
     return f
 
 
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--corpus", type=Path, default=Path("artifacts/routerbench/corpus.parquet"))
     ap.add_argument("--scores", type=Path, default=Path("artifacts/routerbench/scores.parquet"))
     ap.add_argument("--predictions", type=Path, default=Path("artifacts/predictions/all_interim.parquet"))
+    ap.add_argument("--features", type=Path, default=None)
     ap.add_argument("--small", type=str, default="mistralai/mixtral-8x7b-chat")
     ap.add_argument("--large", type=str, default="gpt-4-1106-preview")
     ap.add_argument("--source", type=str, default="mmlu")
+    ap.add_argument("--n-folds", type=int, default=10)
+    ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out-md", type=Path, default=Path("notes/loso_report.md"))
     args = ap.parse_args()
 
-    for p, what in ((args.corpus, "corpus"), (args.scores, "scores"), (args.predictions, "predictions")):
+    for p, what in ((args.corpus, "corpus"), (args.scores, "scores")):
         if not p.exists():
             print(f"Error: missing {what} {p}", file=sys.stderr)
             sys.exit(1)
 
-    df = load_frame(args.predictions, args.corpus, args.scores, small=args.small, large=args.large)
-    mmlu = df[(df["source"] == args.source) & df["subject"].notna()]
-    if mmlu.empty:
-        print(f"Error: no {args.source} rows in the predictions frame.", file=sys.stderr)
-        sys.exit(1)
-    n_subjects = mmlu[mmlu["subject"] != "(no subject)"]["subject"].nunique()
-    print(f"{args.source}: {len(mmlu):,} rows, {n_subjects} subjects")
+    has_preds = args.predictions.exists()
+
+    corpus = schema.read(args.corpus, schema.CORPUS)
+    scores = schema.read(args.scores, schema.SCORES)
+    wide = scores.pivot(index="qid", columns="model", values="score")
+    m1 = pair_costs(PriceTable.load(), scores, small=args.small, large=args.large)
 
     lines = [
-        f"# Leave-one-subject-out on {args.source} (T26)",
+        f"# Subject Evaluation & Leave-One-Subject-Out on {args.source} (T26)",
         "",
-        f"*Generated {dt.datetime.now(dt.timezone.utc):%Y-%m-%d %H:%M UTC} by `scripts/13_loso_mmlu.py` "
-        f"from `{args.predictions}`.*",
+        f"*Generated {dt.datetime.now(dt.timezone.utc):%Y-%m-%d %H:%M UTC} by `scripts/13_loso_mmlu.py`.*",
         "",
-        f"Pair: S = `{args.small}`, L = `{args.large}`. Test rows only. Each subject is scored as its "
-        "**own held-out fold**; `LOSO` = mean over folds, `Grouped` = the same rows pooled as one "
-        "test set. Positive gaps mean the pooled number flatters the router. **Interim** like "
-        "`notes/threshold_report.md`: re-run after the frozen splits + F2.",
+        f"Pair: S = `{args.small}`, L = `{args.large}`.",
         "",
     ]
-    for router in sorted(mmlu["router"].unique()):
-        r = mmlu[mmlu["router"] == router]
-        for rule in RULES:
-            summary = loso_subject_eval(f"{router} ({rule})",
-                                        r["subject"].to_numpy(), r[rule].to_numpy(),
-                                        r["s_S"].to_numpy(), r["s_L"].to_numpy())
-            pooled = summary.pooled
-            g = summary.gaps
+
+    # --- Part 1: Within-subject evaluation on existing predictions ---
+    if has_preds:
+        df = load_frame(args.predictions, args.corpus, args.scores, small=args.small, large=args.large)
+        mmlu_preds = df[(df["source"] == args.source) & df["subject"].notna() & (df["split"] == "test")]
+        if not mmlu_preds.empty:
             lines += [
-                f"## {router} ({rule})",
+                "## 1. Within-Subject Evaluation (Existing Router Predictions)",
                 "",
-                f"| {args.source} subject | n | AUC | CPT(95%) | Savings@PGR .95 | APGR |",
-                "|---|--:|:--:|:--:|:--:|:--:|",
+                "Scores existing test-split predictions per subject. Note: These routers were trained on all "
+                "subjects, so this measures within-subject ranking performance rather than generalization to "
+                "unseen subjects.",
+                "",
             ]
-            for _, row in summary.subject_table.iterrows():
-                lines.append(f"| {row['subject']} | {int(row['n']):,} | {row['auc']:.4f} | "
-                             f"{row['cpt_95']:.4f} | {row['savings_95']:.1%} | {row['apgr']:.4f} |")
+            for router in sorted(mmlu_preds["router"].unique()):
+                r = mmlu_preds[mmlu_preds["router"] == router]
+                for rule in RULES:
+                    summary = within_subject_eval(
+                        f"{router} ({rule})",
+                        r["subject"].to_numpy(),
+                        r[rule].to_numpy(),
+                        r["s_S"].to_numpy(),
+                        r["s_L"].to_numpy(),
+                    )
+                    pooled = summary.pooled
+                    g = summary.gaps
+                    lines += [
+                        f"### {router} ({rule})",
+                        "",
+                        f"| {args.source} subject | n | AUC | CPT(95%) | Savings@PGR .95 | APGR |",
+                        "|---|--:|:--:|:--:|:--:|:--:|",
+                    ]
+                    for _, row in summary.subject_table.iterrows():
+                        lines.append(
+                            f"| {row['subject']} | {int(row['n']):,} | {row['auc']:.4f} | "
+                            f"{row['cpt_95']:.4f} | {row['savings_95']:.1%} | {row['apgr']:.4f} |"
+                        )
+                    lines += [
+                        f"| **Subject mean** | {int(summary.subject_table['n'].sum()):,} | — | "
+                        f"{summary.subject_table['cpt_95'].mean():.4f} | "
+                        f"{summary.subject_table['savings_95'].mean():.1%} | "
+                        f"{summary.subject_table['apgr'].mean():.4f} |",
+                        f"| **Grouped (pooled)** | {int(len(r)):,} | — | {pooled.cpt_95:.4f} | "
+                        f"{pooled.savings_95:.1%} | {pooled.apgr:.4f} |",
+                        "",
+                        f"**Gaps (pooled - subject mean):** CPT {g['cpt_gap']:+.4f}, savings "
+                        f"{g['savings_gap']:+.1%}, APGR {g['apgr_gap']:+.4f}. Worst subject: "
+                        f"**{g['worst_subject']}** (savings {g['worst_savings']:.1%}).",
+                        "",
+                    ]
+
+    # --- Part 2: True Leave-One-Subject-Out (LOSO) with Retrained LogReg on F2 ---
+    feat_path = args.features
+    if feat_path is None:
+        default_feat = Path("artifacts/features/features.parquet")
+        if default_feat.exists():
+            feat_path = default_feat
+
+    c_source = corpus[(corpus["source"] == args.source) & corpus["subject"].notna()].copy()
+    c_source = c_source[c_source["qid"].isin(wide.index)]
+
+    if not c_source.empty:
+        c_tr = c_source[c_source["split"] == "train"]
+        c_te = c_source[c_source["split"] == "test"]
+
+        if not c_tr.empty and not c_te.empty:
+            qids_tr = c_tr["qid"].tolist()
+            qids_te = c_te["qid"].tolist()
+
+            if feat_path and feat_path.exists():
+                feat_df = schema.read(feat_path, schema.FEATURES)
+                feat_map = dict(zip(feat_df["qid"], feat_df["vector"]))
+                X_tr = np.array([feat_map[q] for q in qids_tr], dtype=np.float32)
+                X_te = np.array([feat_map[q] for q in qids_te], dtype=np.float32)
+            else:
+                # Synthetic or lightweight representation fallback: word/char ngram TF-IDF
+                from router.features import TfidfFeatureExtractor
+                tfidf = TfidfFeatureExtractor(min_df=1, max_word_features=500, max_char_features=500)
+                X_tr = tfidf.fit_transform(c_tr["prompt"].tolist()).toarray().astype(np.float32)
+                X_te = tfidf.transform(c_te["prompt"].tolist()).toarray().astype(np.float32)
+
+            y_tr_S = wide.loc[qids_tr, args.small].to_numpy(dtype=float)
+            y_tr_L = wide.loc[qids_tr, args.large].to_numpy(dtype=float)
+            y_te_S = wide.loc[qids_te, args.small].to_numpy(dtype=float)
+            y_te_L = wide.loc[qids_te, args.large].to_numpy(dtype=float)
+
+            costs_te_L = m1.loc[qids_te, "c_L"].to_numpy(dtype=float) if "c_L" in m1.columns else None
+
+            loso_summary = run_real_loso(
+                X_train=X_tr,
+                y_train_S=y_tr_S,
+                y_train_L=y_tr_L,
+                subjects_train=c_tr["subject"].tolist(),
+                X_test=X_te,
+                y_test_S=y_te_S,
+                y_test_L=y_te_L,
+                subjects_test=c_te["subject"].tolist(),
+                costs_test_L=costs_te_L,
+                n_folds=args.n_folds,
+                seed=args.seed,
+            )
+
+            p_ret = loso_summary.pooled_retrained
+            l_mean = loso_summary.loso_mean
+            gaps = loso_summary.gaps
+
             lines += [
-                f"| **LOSO mean** | {int(summary.subject_table['n'].sum()):,} | — | "
-                f"{summary.subject_table['cpt_95'].mean():.4f} | "
-                f"{summary.subject_table['savings_95'].mean():.1%} | "
-                f"{summary.subject_table['apgr'].mean():.4f} |",
-                f"| **Grouped (pooled)** | {int(len(r)):,} | — | {pooled.cpt_95:.4f} | "
-                f"{pooled.savings_95:.1%} | {pooled.apgr:.4f} |",
+                "## 2. True Leave-One-Subject-Out (LOSO) Evaluation (Retrained on F2 / LogReg)",
                 "",
-                f"**Gaps (grouped - LOSO):** CPT {g['cpt_gap']:+.4f}, savings "
-                f"{g['savings_gap']:+.1%}, APGR {g['apgr_gap']:+.4f}. Worst subject: "
-                f"**{g['worst_subject']}** (savings {g['worst_savings']:.1%}).",
+                f"Subjects grouped into {len(loso_summary.fold_table)} held-out folds. For each fold, "
+                "the router is retrained with that fold's train rows removed, then evaluated on the fold's test rows.",
+                "",
+                "| Fold | Subjects Sample | Subjects Count | Test n | AUC | CPT(95%) | Savings@PGR .95 | APGR |",
+                "|---|---|--:|--:|:--:|:--:|:--:|:--:|",
+            ]
+            for _, r_fold in loso_summary.fold_table.iterrows():
+                lines.append(
+                    f"| {int(r_fold['fold'])} | {r_fold['subjects']} | {int(r_fold['n_subjects'])} | "
+                    f"{int(r_fold['n_test']):,} | {r_fold['auc']:.4f} | {r_fold['cpt_95']:.4f} | "
+                    f"{r_fold['savings_95']:.1%} | {r_fold['apgr']:.4f} |"
+                )
+            lines += [
+                f"| **True LOSO Mean** | — | — | {int(loso_summary.fold_table['n_test'].sum()):,} | "
+                f"{l_mean['auc']:.4f} | {l_mean['cpt_95']:.4f} | {l_mean['savings_95']:.1%} | {l_mean['apgr']:.4f} |",
+                f"| **Pooled (Retrained)** | All subjects in train | {c_source['subject'].nunique()} | {len(qids_te):,} | "
+                f"{p_ret.auc:.4f} | {p_ret.cpt_95:.4f} | {p_ret.savings_95:.1%} | {p_ret.apgr:.4f} |",
+                "",
+                f"**True Generalization Gap (Pooled - True LOSO):** CPT {gaps['cpt_gap']:+.4f}, "
+                f"savings {gaps['savings_gap']:+.1%}, APGR {gaps['apgr_gap']:+.4f}. "
+                f"Worst fold: **Fold {gaps['worst_fold']}** ({gaps['worst_fold_subjects']}, savings {gaps['worst_savings']:.1%}).",
                 "",
             ]
 
