@@ -2,7 +2,7 @@
 """Group near-duplicate questions and re-split, so no near-copy crosses train / cal / test (T04).
 
     python scripts/02_dedup.py                                   # lexical pass (MinHash)
-    python scripts/02_dedup.py --embeddings artifacts/routerbench/features.parquet
+    python scripts/02_dedup.py --embeddings artifacts/features/features.parquet
                                                                  # + semantic pass, once F2 exists (T12)
 
 Rewrites artifacts/routerbench/corpus.parquet (new group_id and split), writes dedup_pairs.parquet

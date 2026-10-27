@@ -61,8 +61,11 @@ def load_frame(pred_path, corpus_path, scores_path, small, large, cost_model="M1
 
 def report_one(df: pd.DataFrame, rule: str, rho: float, delta: float, B: int, seed: int) -> dict:
     tr, ca, te = (df[df["split"] == s] for s in ("train", "cal", "test"))
-    grid = th.threshold_grid(tr[rule].to_numpy(), n=1000)
-    out = {"rule": rule, "n_cal": len(ca), "n_test": len(te), "selections": {}}
+    if len(tr):
+        grid, grid_from = th.threshold_grid(tr[rule].to_numpy(), n=1000), "train"
+    else:   # predictions file has no train rows: fall back to cal's own breakpoints (say so in the report)
+        grid, grid_from = th.breakpoints(ca[rule].to_numpy()), "cal (no train predictions; data-dependent grid)"
+    out = {"rule": rule, "n_cal": len(ca), "n_test": len(te), "grid_from": grid_from, "selections": {}}
     for method in METHODS:
         sel = th.select_tau(ca[rule].to_numpy(), ca["s_S"].to_numpy(), ca["s_L"].to_numpy(), taus=grid,
                             rho=rho, delta=delta, method=method, B=B, seed=seed)
@@ -129,10 +132,14 @@ def to_markdown(rep: dict) -> str:
         for rule in r["rules"]:
             for m, s in rule["selections"].items():
                 t1 = s["test"]["M1"]
-                L.append(f"| {r['router']} | {rule['rule']} | {m} | {'yes' if s['certified'] else 'no'} | "
+                flag = "" if rule.get("grid_from", "train") == "train" else " †"
+                L.append(f"| {r['router']}{flag} | {rule['rule']} | {m} | {'yes' if s['certified'] else 'no'} | "
                          f"{pct(s['cal']['alpha'])} | {pct(t1['alpha'])} | {pct(t1['pgr'])} {ci(t1['ci']['pgr'])} | "
                          f"{pct(t1['savings'])} {ci(t1['ci']['savings'])} | {pct(s['test']['savings_vs_batch'])} | "
                          f"{pct(s['test']['M2']['savings'])} |")
+    if any(rr.get("grid_from", "train") != "train" for r in rep["routers"] for rr in r["rules"]):
+        L.append("\n† No train-split predictions in the file, so the threshold grid came from cal itself. "
+                 "Learn-then-Test is then only approximately valid; write train predictions to fix it.")
     L.append("\n## Test-split curves (no tau selection; for comparing routers)\n")
     L.append("| Router | Rule | CPT(95%) | Envelope CPT(95%) | APGR | Savings at CPT |")
     L.append("|---|---|--:|--:|--:|--:|")

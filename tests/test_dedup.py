@@ -94,3 +94,22 @@ def test_short_prompts_sharing_only_content_words_are_not_duplicates():
     texts += [f"Write a function to find the {w} of the given list." for w in
               ("sum", "max", "min", "mean", "median", "mode", "range", "product", "count", "sorted copy") * 3]
     assert (0, 1) not in [(i, j) for i, j, _ in lexical_pairs(texts)]
+
+
+def test_centering_stops_a_shared_template_from_chaining_a_whole_subject():
+    """Raw cosine merges every item that shares a long preamble; centred cosine does not."""
+    rng = np.random.default_rng(0)
+    n, d = 40, 64
+    template = rng.normal(size=d) * 6                  # dominant shared direction
+    vecs = template + rng.normal(size=(n, d))          # distinct questions
+    vecs[1] = vecs[0] + rng.normal(size=d) * 0.05      # one genuine near-copy
+    c = pd.DataFrame({"qid": [f"q{i}" for i in range(n)], "source": "mmlu", "subject": "moral-scenarios",
+                      "group_id": [f"q{i}" for i in range(n)], "split": "train",
+                      "prompt": [f"scenario {i} " + "x" * i for i in range(n)], "reference": None, "meta": None})
+    emb = {f"q{i}": v for i, v in enumerate(vecs)}
+    raw = dedup_corpus(c, embeddings=emb, center=False, cosine_threshold=0.95)
+    assert raw.corpus["group_id"].nunique() < n / 2                 # the template chains them
+    cen = dedup_corpus(c, embeddings=emb)
+    g = cen.corpus.set_index("qid")["group_id"]
+    assert g["q0"] == g["q1"] and cen.corpus["group_id"].nunique() == n - 1
+    assert cen.report["embedding_centered"] is True

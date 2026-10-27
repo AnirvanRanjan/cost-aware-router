@@ -16,7 +16,9 @@ Done already: the code foundation, the RouterBench audit, the loader with re-gra
 near-duplicate grouping (T04), and kartiken07's measured M2 speeds. The data is a GitHub release:
 
 ```bash
-gh release download data-3f774421cc116201 -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench
+gh release download data-910a584c8279baa7 -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench \
+  -p corpus.parquet -p scores.parquet -p dedup_pairs.parquet -p manifest.json -p SHA256SUMS
+gh release download data-910a584c8279baa7 -R AnirvanRanjan/cost-aware-router -D artifacts/features -p features.parquet
 python scripts/verify_data.py        # must print "Same data as everyone else."
 ```
 
@@ -57,7 +59,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 | T01 | All | Agree the model pairs (DECISIONS D-05 to D-08): Qwen vs GPT-4 is the headline and the demo; Mixtral vs GPT-4 the development pair and the RouteLLM comparison; Yi-34B optional; Mistral-7B dropped; HellaSwag reported separately. | PR #4 approved by every lane |
 | T02 | All | Review and merge PR #3 (audit), then PR #4 (loader). One reviewer per lane on #4, since it changes `schema.py` and `costs.py`. | Both merged into `main` |
 | T03 | A | ✅ Done. Loader rerun with Mixtral + Yi-34B; data published as release `data-3f774421cc116201`. | — |
-| T04 | A | ✅ Lexical pass done (585 pairs, `notes/dedup_report.md`). Remaining: the embedding pass, once B delivers F2 (T12). | Report shows the embedding pass ran |
+| T04 | A | ✅ Both passes done, **splits frozen** (D-11): 1,883 pairs, embedding pass on template-centred vectors (`notes/dedup_report.md`). | Report shows the embedding pass ran |
 | T07 | A | ✅ Done. Gold letters in `corpus.reference`: ARC 99.1%, MMLU 95.5%, Winogrande 100%, HellaSwag 97.6%, 0 conflicts. Release `data-3f774421cc116201`. | — |
 | T05 | C | Fix `estimate_spend.py` so measured and estimated speeds are labelled separately. | Output says which is which |
 | T06 | D | Branch protection on `main`, PR template, `CODEOWNERS` so any `schema.py` change requests every lane. | A test PR shows the rules |
@@ -68,7 +70,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 |---|---|---|---|---|
 | T10 | B | F0: ~25 heuristic features as a pure function | — | Hand-computed values match in tests |
 | T11 | B | F1: TF-IDF, word 1–2 + char 3–5 grams, fit on train only | — | Fit-on-train enforced by a test |
-| T12 | B | F2: `bge-base-en-v1.5` embeddings for all 34,778 prompts, cached to `features.parquet` | T03 | One file, minutes to compute on any Mac |
+| T12 | B | ✅ F2: `bge-base-en-v1.5` embeddings for all 34,778 prompts (B's script, run on A's M1; in the data release) | T03 | One file, minutes to compute on any Mac |
 | T13 | B | Baselines: logistic regression on F0, F1; XGBoost on F0+F2 | T10–T12 | Validation Spearman ρ per feature set |
 | T14 | B | Two-head MLP (ŝ_S, ŝ_L), soft-label loss + gap term, 5 seeds | T12 | `predictions.parquet` written |
 | T15 | B | Isotonic calibration per head; reliability diagrams + ECE | T14 | Before/after figures in `notes/` |
@@ -105,7 +107,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 | T42 | D | `serve.py` (FastAPI): `/route` (decision only), `/chat` (route, generate, stream), `/stats` (running totals). Qwen and the router load once at start-up. | T30, T41 | Router decision p99 < 15 ms on the M2 |
 | T43 | D | Web page: query box → **routed to local or API**, predicted ŝ_S / ŝ_L against τ\*, the answer streaming in, latency, this query's cost, **money saved so far vs always-frontier** | T42 | Works in Safari and Chrome |
 | T44 | C | **Replay mode**: push 200 held-out test queries through the live router, showing accuracy against always-frontier and cost saved as it runs. This is the Pareto point, live. | T42 | Matches the offline result for the same 200 |
-| T45 | A | Demo set: 10 easy queries the router should keep local, 10 hard ones it should send out, 5 open chat prompts. Check every decision in advance. | T41 | Every planned query routes as expected |
+| T45 | A | Demo set: 10 easy queries the router should keep local, 10 hard ones it should send out, 5 open chat prompts. Check every decision in advance. ✅ Draft in `configs/demo_set.yaml`, checker `scripts/check_demo_set.py`; interim router fails 8/10 easy ones (`notes/demo_set_check.md`) | T41 | Every planned query routes as expected |
 | T46 | D | Offline mode: cached frontier answers for the demo and replay sets; `--offline` flag | T44, T45 | Full demo runs with Wi-Fi off |
 | T47 | D | Soak test on the M2: one hour of queries; record memory peak, first-token latency, thermal throttling | T43 | Numbers in `notes/demo_perf.md` |
 | T48 | All | Record the backup video of the full demo | T46 | Video on the shared drive |
@@ -115,7 +117,7 @@ web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck
 
 | ID | Owner | Task | Done when |
 |---|---|---|---|
-| T50 | A | Chapter: datasets, the audit, re-grading, dedup and splits | Draft reviewed by one teammate |
+| T50 | A | Chapter: datasets, the audit, re-grading, dedup and splits. Outline + every number: `notes/chapter_A_facts.md` | Draft reviewed by one teammate |
 | T51 | B | Chapter: features and router architecture, the ablation ladder | Draft reviewed |
 | T52 | C | Chapter: cost model, threshold selection, guarantees, results | Draft reviewed |
 | T53 | D | Chapter: local inference, serving, the demo, performance on the M2 | Draft reviewed |
