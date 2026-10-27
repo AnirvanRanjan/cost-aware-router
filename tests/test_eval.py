@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from router.eval import (
+    LOSOSummary,
     RoutingCurve,
     RoutingMetrics,
     build_ablation_table,
@@ -13,6 +14,7 @@ from router.eval import (
     compute_pgr,
     compute_routing_curve,
     evaluate_router_config,
+    loso_subject_eval,
 )
 
 
@@ -94,3 +96,86 @@ def test_build_ablation_table():
     assert list(df.columns) == expected_cols
     assert df.loc[0, "Config"] == "Random router"
     assert df.loc[3, "Config"] == "Oracle router"
+
+
+# ~~~ T26: leave-one-subject-out on MMLU ~~~
+
+SPECIFIC_SUBJECTS = ("anatomy", "moral_scenarios", "world_religions")
+
+
+def _mmlu_like(seed=7, n_per=200):
+    """Subjects with very different difficulty, a router that is decent within a subject."""
+    rng = np.random.default_rng(seed)
+    subject_offsets = {"moral_scenarios": 0.0, "anatomy": 0.5, "world_religions": 1.0}
+    subjects, s_S, s_L, scores = [], [], [], []
+    for subj, offset in subject_offsets.items():
+        ss = rng.binomial(1, np.clip(0.55 - offset * 0.4, 0.05, 0.9), n_per).astype(float)
+        sl = rng.binomial(1, np.clip(0.92 - offset * 0.2, 0.1, 0.99), n_per).astype(float)
+        scores.append((sl - 0.2) - offset + rng.normal(0, 0.1, n_per))
+        s_S.append(ss)
+        s_L.append(sl)
+        subjects += [subj] * n_per
+    return np.concatenate(scores), np.concatenate(s_S), np.concatenate(s_L), np.array(subjects, dtype=object)
+
+
+def test_loso_subject_eval_folds_and_gaps():
+    scores, s_S, s_L, subjects = _mmlu_like()
+    summary = loso_subject_eval("mmlu router", subjects, scores, s_S, s_L)
+    assert isinstance(summary, LOSOSummary)
+    assert list(summary.subject_table["subject"]) == list(SPECIFIC_SUBJECTS)
+    assert summary.subject_table["n"].sum() == len(scores)
+
+    # pooled row must equal the same rows evaluated as one fold
+    pooled = evaluate_router_config("mmlu router", scores, s_S, s_L)
+    assert summary.pooled.savings_95 == pytest.approx(pooled.savings_95)
+    assert summary.pooled.cpt_95 == pytest.approx(pooled.cpt_95)
+
+    # gaps are pooled minus LOSO mean, with the worst held-out subject identified
+    mean_cpt = summary.subject_table["cpt_95"].mean()
+    mean_sav = summary.subject_table["savings_95"].mean()
+    assert summary.gaps["cpt_gap"] == pytest.approx(pooled.cpt_95 - mean_cpt)
+    assert summary.gaps["savings_gap"] == pytest.approx(pooled.savings_95 - mean_sav)
+    assert summary.gaps["worst_subject"] == summary.subject_table.loc[
+        summary.subject_table["savings_95"].idxmin(), "subject"]
+
+
+def test_loso_true_gap_router_transfers_between_subjects():
+    # The oracle (true gap) needs no subject knowledge, so LOSO ~= grouped for it.
+    scores, s_S, s_L, subjects = _mmlu_like()
+    summary = loso_subject_eval("oracle", subjects, s_L - s_S, s_S, s_L)
+    assert summary.gaps["savings_gap"] < 0.05
+    assert summary.gaps["cpt_gap"] < 0.05
+
+
+def test_loso_subject_only_router_has_no_within_subject_signal():
+    # Scores that are pure subject offsets: fine between subjects, useless inside one. The LOSO
+    # table catches what a pooled AUC would partly flatter.
+    scores, s_S, s_L, subjects = _mmlu_like()
+    off = {s: i for i, s in enumerate(SPECIFIC_SUBJECTS)}
+    bad = np.array([off[s] for s in subjects], dtype=float)
+    summary = loso_subject_eval("subject-only router", subjects, bad, s_S, s_L)
+    within_auc = [evaluate_router_config(s, bad[subjects == s], s_S[subjects == s], s_L[subjects == s]).auc
+                  for s in summary.subject_table["subject"]]
+    assert max(within_auc) <= 0.55
+
+
+def test_loso_input_validation_and_min_subject_n():
+    scores, s_S, s_L, subjects = _mmlu_like()
+    with pytest.raises(ValueError):
+        loso_subject_eval("x", subjects[:-1], scores, s_S, s_L)
+    bad_scores = scores.copy()
+    bad_scores[0] = np.nan
+    with pytest.raises(ValueError):
+        loso_subject_eval("x", subjects, bad_scores, s_S, s_L)
+    with pytest.raises(ValueError):
+        loso_subject_eval("x", subjects, scores, s_S, s_L, min_subject_n=len(scores) + 1)
+
+
+def test_loso_rows_without_subject_are_pooled_as_a_fold():
+    scores, s_S, s_L, subjects = _mmlu_like()
+    subjects2 = subjects.copy()
+    subjects2[subjects2 == "anatomy"] = None      # e.g. gsm8k rows alongside the MMLU rows
+    summary = loso_subject_eval("mix", subjects2, scores, s_S, s_L)
+    pooled_auc = evaluate_router_config("mix", scores, s_S, s_L).auc
+    assert summary.pooled.auc == pytest.approx(pooled_auc)
+    assert "(no subject)" in set(summary.subject_table["subject"])

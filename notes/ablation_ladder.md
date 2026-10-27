@@ -22,7 +22,30 @@ Evaluated on the **untouched test split** ($N=6,954$ queries, Large=`gpt-4-1106-
 
 ---
 
-## 2. Key Takeaways & Discussion
+## 2. Which savings number is official (T22-T23, lane C)
+
+> The `Savings @ PGR .95` column above is **not the project's official savings number.** It is
+> computed by picking the threshold that reaches PGR 0.95 *on the test split itself*
+> (`compute_routing_curve` sweeps tau over the test rows), so it is an upper bound: the same
+> threshold leakage DESIGN.md §5.2 warns about ("headline savings inflated by τ swept on the
+> test set") and it carries no guarantee. Use it only to compare routers with each other.
+
+The official number is the **certified** one in `notes/threshold_report.md`: tau\* is chosen on
+**cal** only by fixed-sequence Learn-then-Test with the WSR betting bound, then applied once to
+untouched test. For the entry that matches this ladder's headline config (two-head MLP, decision
+rule v2 — "two_head_mlp † v2 wsr" there):
+
+| Operating point | Source | Savings M1 [95% CI] | PGR test [CI] |
+|---|---|--:|--:|
+| Certified (official) | `notes/threshold_report.md`, wsr | **9.4% [7.8, 10.9]** | 96.3% [95.2, 97.5] |
+| Test-picked (upper bound) | `Savings @ PGR .95` here, rule v2 | 14.3% | 95% by construction |
+
+Every thesis / report statement of savings must cite the certified figure, or state explicitly
+that it is quoting the leakage-prone curve optimum. The `†` in `notes/threshold_report.md` also
+notes that those interim runs used a cal-derived threshold grid; write train-split predictions
+(`scripts/04_train_two_head.py`) to make the LTT grid train-derived.
+
+## 3. Key Takeaways & Discussion
 
 1. **Stepwise Progression Across the Feature Ladder**:
    - **F0 Heuristics**: Extracts basic length, digit, and keyword signals.

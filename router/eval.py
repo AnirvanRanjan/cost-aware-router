@@ -8,6 +8,7 @@ Provides:
   * AUC: Classification AUC for identifying questions where Large wins
   * Spearman rho: Rank correlation between routing score and true gap
   * Ablation table builder matching DESIGN.md § 4.3
+  * T26: leave-one-subject-out (LOSO) evaluation per MMLU subject, grouped vs LOSO gap
 """
 from __future__ import annotations
 
@@ -235,6 +236,98 @@ def evaluate_router_config(
         q_S=float(np.mean(y_S)),
         q_L=float(np.mean(y_L)),
     )
+
+
+# ~~ T26: leave-one-subject-out (LOSO) on MMLU ~~
+# MMLU questions carry a subject label (router/data.py splits the "mmlu-<subject>" template
+# name). A router trained on all subjects can look good on the pooled test split while quietly
+# memorising subject-level difficulty (MMLU subjects differ a lot: moral_scenarios vs anatomy).
+# Leave-one-subject-out makes that visible: each subject is scored as its own held-out fold,
+# exactly as evaluate_router_config would score it, and the gap between pooled ("grouped")
+# metrics and the mean over held-out subjects is what T26 asks to report.
+
+
+@dataclass(frozen=True)
+class LOSOSummary:
+    """Leave-one-subject-out evaluation result (T26).
+
+    subject_table : one RoutingMetrics row per subject, plus the subject name and n
+    pooled        : metrics on all subjects together (the grouped-split view)
+    gaps          : pooled (grouped) minus LOSO mean; positive cpt/savings gaps mean the
+                    pooled number is flattered by between-subject ranking the router could
+                    not generalise to a fresh subject. `worst` names the subject with the
+                    largest savings shortfall vs pooled.
+    """
+
+    subject_table: pd.DataFrame
+    pooled: RoutingMetrics
+    gaps: dict
+
+
+def loso_subject_eval(
+    name: str,
+    subjects: Sequence[str | None],
+    routing_scores: Sequence[float] | np.ndarray,
+    s_S: Sequence[float] | np.ndarray,
+    s_L: Sequence[float] | np.ndarray,
+    costs_S: Sequence[float] | np.ndarray | None = None,
+    costs_L: Sequence[float] | np.ndarray | None = None,
+    min_subject_n: int = 1,
+) -> LOSOSummary:
+    """Evaluate a router per subject (e.g. each MMLU subject held out) vs pooled (T26).
+
+    Same scoring per fold as the pooled run: for every subject, `evaluate_router_config` on
+    that subject's rows alone. Rows whose subject is None (other sources) enter the pooled
+    row but are folded into a "(no subject)" bucket only if any such rows exist.
+    """
+    subjects = np.asarray([str(s) if s is not None else "(no subject)" for s in subjects], dtype=object)
+    scores = np.asarray(routing_scores, dtype=float)
+    y_S = np.asarray(s_S, dtype=float)
+    y_L = np.asarray(s_L, dtype=float)
+    if not len(subjects) == len(scores) == len(y_S) == len(y_L):
+        raise ValueError("subjects, routing_scores, s_S and s_L must have the same length")
+
+    if np.isnan(scores).any():
+        raise ValueError("routing_scores contain NaN")
+
+    rows: list[dict] = []
+    folded: dict[str, np.ndarray] = {}
+    for subj in pd.unique(subjects):
+        folded[str(subj)] = np.flatnonzero(subjects == subj)
+
+    for subj, idx in sorted(folded.items()):
+        if len(idx) < min_subject_n:
+            continue
+        metrics = evaluate_router_config(
+            str(subj), scores[idx], y_S[idx], y_L[idx], costs_S=None if costs_S is None else np.asarray(costs_S, dtype=float)[idx],
+            costs_L=None if costs_L is None else np.asarray(costs_L, dtype=float)[idx],
+        )
+        rows.append({
+            "subject": str(subj),
+            "n": len(idx),
+            "auc": metrics.auc,
+            "rho": metrics.spearman_rho,
+            "cpt_95": metrics.cpt_95,
+            "savings_95": metrics.savings_95,
+            "apgr": metrics.apgr,
+            "q_S": metrics.q_S,
+            "q_L": metrics.q_L,
+        })
+    if not rows:
+        raise ValueError("no fold had at least min_subject_n rows; nothing to report")
+
+    pooled_metrics = evaluate_router_config(name, scores, y_S, y_L, costs_S=costs_S, costs_L=costs_L)
+    table = pd.DataFrame(rows).sort_values("subject", kind="stable").reset_index(drop=True)
+    mean = table[["cpt_95", "savings_95", "apgr"]].mean(numeric_only=True)
+    worst = int(table["savings_95"].idxmin()) if len(table) >= 1 else None  # first min on ties
+    gaps = {
+        "cpt_gap": float(pooled_metrics.cpt_95 - mean["cpt_95"]),
+        "savings_gap": float(pooled_metrics.savings_95 - mean["savings_95"]),
+        "apgr_gap": float(pooled_metrics.apgr - mean["apgr"]),
+        "worst_subject": str(table.loc[worst, "subject"]),
+        "worst_savings": float(table.loc[worst, "savings_95"]),
+    }
+    return LOSOSummary(subject_table=table, pooled=pooled_metrics, gaps=gaps)
 
 
 def build_ablation_table(
