@@ -41,7 +41,12 @@ def load_frame(pred_path, corpus_path, scores_path, small, large):
     scores = schema.read(scores_path, schema.SCORES)
     wide = scores.pivot(index="qid", columns="model", values="score")
     m1 = pair_costs(PriceTable.load(), scores, small=small, large=large)
-    f = preds.join(corpus[["split", "source", "subject"]], on="qid")
+
+    f = preds[preds["qid"].isin(corpus.index) & preds["qid"].isin(wide.index) & preds["qid"].isin(m1.index)].copy()
+    if f.empty:
+        return pd.DataFrame(columns=["qid", "router", "split", "source", "subject", "s_S", "s_L", "c_L", "v1", "v2"])
+
+    f = f.join(corpus[["split", "source", "subject"]], on="qid")
     f["s_S"] = wide.loc[f["qid"], small].to_numpy()
     f["s_L"] = wide.loc[f["qid"], large].to_numpy()
     f["c_L"] = m1.loc[f["qid"], "c_L"].to_numpy()
