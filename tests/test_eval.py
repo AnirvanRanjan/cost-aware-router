@@ -221,3 +221,7 @@ def test_real_loso_retraining_and_gaps():
     assert "savings_gap" in res.gaps
     assert "worst_fold" in res.gaps
     assert res.pooled_retrained.auc > 0.5
+    assert res.loso_test_metrics is not None
+    assert res.pooled_fold_mean is not None
+    assert "fold_auc_gap" in res.gaps
+    assert "oof_auc_gap" in res.gaps

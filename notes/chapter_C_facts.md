@@ -21,7 +21,7 @@ Everything Chapter C needs for your thesis/defence, with mathematical derivation
 4. **Statistical Guarantees & Threshold Calibration via Learn-then-Test (T22 & T23)**
    - Defining the paired margin statistic $e_i(\tau) = s_{\text{route}(i)} - [(1 - \rho) s_{S,i} + \rho s_{L,i}]$.
    - Fixed-sequence hypothesis testing on calibration split $\mathcal{D}_{\text{cal}}$ without Bonferroni inflation.
-   - Comparing statistical bounds: Hoeffding vs. Empirical Bernstein vs. Paired Bootstrap vs. **WSR (Waudby-Smith & Ramdas)**.
+   - Comparing statistical bounds: Hoeffding vs. Paired Bootstrap vs. **WSR (Waudby-Smith & Ramdas)**.
    - **Critical Viva Question: Why the paired bootstrap undercovers in small headroom regimes.**
 5. **Empirical Results & Findings (RouterBench & Cascade)**
    - Official certified savings on test: Two-Head MLP + Rule v2 yields **9.4% [7.8, 10.9]** savings at PGR 96.3% [95.2, 97.5].
@@ -33,7 +33,7 @@ Everything Chapter C needs for your thesis/defence, with mathematical derivation
 ## 2. Mathematical Formulations & Cost Models
 
 ### 2.1 The Two Cost Models (M1 and M2)
-In [`router/costs.py`](file:///c:/Users/HP/Desktop/major%20project/cost-aware-router/router/costs.py):
+In [`router/costs.py`](../router/costs.py):
 
 #### Cost Model M1 (API Spend):
 $$C_{M1}(q) = \begin{cases} 0 & \text{if routed to local model } S \\ \frac{p_{\text{in}} \cdot n_{\text{in}} + p_{\text{out}} \cdot n_{\text{out}}}{10^6} & \text{if routed to frontier API } L \end{cases}$$
@@ -115,8 +115,8 @@ Because both models are evaluated on the exact same prompt, taking the differenc
 ---
 
 ## 6. Key Files and Code References
-- [`router/costs.py`](file:///c:/Users/HP/Desktop/major%20project/cost-aware-router/router/costs.py): Implementation of M1 and M2 cost models, `PriceTable`, and `pair_costs()`.
-- [`router/threshold.py`](file:///c:/Users/HP/Desktop/major%20project/cost-aware-router/router/threshold.py): Implementation of `sweep()`, `upper_envelope()`, `wsr_pvalues()`, `select_tau()`, and `evaluate_at_tau()`.
-- [`scripts/08_threshold_report.py`](file:///c:/Users/HP/Desktop/major%20project/cost-aware-router/scripts/08_threshold_report.py): Production generator for calibration and test guarantee tables.
-- [`notes/threshold_report.md`](file:///c:/Users/HP/Desktop/major%20project/cost-aware-router/notes/threshold_report.md): Benchmark results across routers, rules, and bounds.
-- [`notes/cascade_explore.md`](file:///c:/Users/HP/Desktop/major%20project/cost-aware-router/notes/cascade_explore.md): Exploration showing self-consistency / second-opinion escalation boost.
+- [`router/costs.py`](../router/costs.py): Implementation of M1 and M2 cost models, `PriceTable`, and `pair_costs()`.
+- [`router/threshold.py`](../router/threshold.py): Implementation of `sweep()`, `upper_envelope()`, `wsr_pvalues()`, `select_tau()`, and `evaluate_at_tau()`.
+- [`scripts/08_threshold_report.py`](../scripts/08_threshold_report.py): Production generator for calibration and test guarantee tables.
+- [`notes/threshold_report.md`](threshold_report.md): Benchmark results across routers, rules, and bounds.
+- [`notes/cascade_explore.md`](cascade_explore.md): Exploration showing self-consistency / second-opinion escalation boost.

@@ -343,16 +343,20 @@ loso_subject_eval = within_subject_eval
 class RealLOSOSummary:
     """True Leave-One-Subject-Out evaluation result with model retraining (T26).
 
-    fold_table     : one row per subject fold with held-out test metrics, subjects in fold, and test n
-    loso_mean      : average metrics across the held-out folds
-    pooled_retrained: metrics of the baseline model trained on all train rows and tested on pooled test
-    gaps           : pooled minus LOSO mean (CPT gap, savings gap, APGR gap, worst fold)
+    fold_table       : one row per subject fold with held-out test metrics, subjects in fold, and test n
+    loso_mean        : average metrics across the held-out folds
+    pooled_retrained : metrics of the baseline model trained on all train rows and tested on pooled test
+    loso_test_metrics: metrics scored from LOSO out-of-fold predictions on all test rows together
+    pooled_fold_mean : average metrics of the pooled baseline model evaluated per fold
+    gaps             : comparison gaps (both fold-average like-with-like and pooled out-of-fold)
     """
 
     fold_table: pd.DataFrame
     loso_mean: dict[str, float]
     pooled_retrained: RoutingMetrics
     gaps: dict[str, Any]
+    loso_test_metrics: RoutingMetrics | None = None
+    pooled_fold_mean: dict[str, float] | None = None
 
 
 def run_real_loso(
@@ -415,6 +419,14 @@ def run_real_loso(
     costs_S_arr = None if costs_test_S is None else np.asarray(costs_test_S, dtype=float)
     costs_L_arr = None if costs_test_L is None else np.asarray(costs_test_L, dtype=float)
 
+    # Train pooled baseline model on all training data first
+    y_tr_all_bin = ((y_tr_L - y_tr_S) > 0.0).astype(int)
+    clf_pooled = LogisticRegression(C=C, max_iter=max_iter, random_state=seed, solver="lbfgs")
+    clf_pooled.fit(X_tr, y_tr_all_bin)
+    pooled_test_scores = clf_pooled.predict_proba(X_te)[:, 1]
+
+    pooled_fold_rows: list[dict[str, float]] = []
+
     for fold_idx, fold_subjects in enumerate(subject_folds):
         fold_set = set(fold_subjects)
         # Train on all train rows whose subject is NOT in fold_set
@@ -446,6 +458,24 @@ def run_real_loso(
             costs_S=None if costs_S_arr is None else costs_S_arr[te_mask],
             costs_L=None if costs_L_arr is None else costs_L_arr[te_mask],
         )
+
+        # Evaluate pooled model on the exact same fold test rows for like-with-like fold comparison
+        m_pooled_fold = evaluate_router_config(
+            f"pooled_fold_{fold_idx}",
+            pooled_test_scores[te_mask],
+            y_te_S[te_mask],
+            y_te_L[te_mask],
+            costs_S=None if costs_S_arr is None else costs_S_arr[te_mask],
+            costs_L=None if costs_L_arr is None else costs_L_arr[te_mask],
+        )
+        pooled_fold_rows.append({
+            "auc": m_pooled_fold.auc,
+            "rho": m_pooled_fold.spearman_rho,
+            "cpt_95": m_pooled_fold.cpt_95,
+            "savings_95": m_pooled_fold.savings_95,
+            "apgr": m_pooled_fold.apgr,
+        })
+
         fold_rows.append({
             "fold": fold_idx,
             "subjects": ", ".join(fold_subjects[:3]) + (f" (+{len(fold_subjects)-3} more)" if len(fold_subjects) > 3 else ""),
@@ -456,6 +486,8 @@ def run_real_loso(
             "cpt_95": m.cpt_95,
             "savings_95": m.savings_95,
             "apgr": m.apgr,
+            "pooled_fold_auc": m_pooled_fold.auc,
+            "pooled_fold_savings_95": m_pooled_fold.savings_95,
         })
 
     if not fold_rows:
@@ -463,15 +495,19 @@ def run_real_loso(
 
     fold_df = pd.DataFrame(fold_rows)
 
-    # Train pooled baseline model on all training data
-    y_tr_all_bin = ((y_tr_L - y_tr_S) > 0.0).astype(int)
-    clf_pooled = LogisticRegression(C=C, max_iter=max_iter, random_state=seed, solver="lbfgs")
-    clf_pooled.fit(X_tr, y_tr_all_bin)
-    pooled_test_scores = clf_pooled.predict_proba(X_te)[:, 1]
-
     pooled_metrics = evaluate_router_config(
         "pooled_f2_logreg",
         pooled_test_scores,
+        y_te_S,
+        y_te_L,
+        costs_S=costs_S_arr,
+        costs_L=costs_L_arr,
+    )
+
+    # Score LOSO out-of-fold predictions on all test rows together
+    loso_test_metrics = evaluate_router_config(
+        "loso_out_of_fold",
+        loso_test_scores,
         y_te_S,
         y_te_L,
         costs_S=costs_S_arr,
@@ -486,8 +522,28 @@ def run_real_loso(
         "apgr": float(fold_df["apgr"].mean()),
     }
 
+    pooled_fold_df = pd.DataFrame(pooled_fold_rows)
+    pooled_fold_mean = {
+        "auc": float(pooled_fold_df["auc"].mean()),
+        "rho": float(pooled_fold_df["rho"].mean()),
+        "cpt_95": float(pooled_fold_df["cpt_95"].mean()),
+        "savings_95": float(pooled_fold_df["savings_95"].mean()),
+        "apgr": float(pooled_fold_df["apgr"].mean()),
+    }
+
     worst_idx = int(fold_df["savings_95"].idxmin())
     gaps = {
+        # Comparison like-with-like (1): fold averages (pooled_fold_mean - loso_mean)
+        "fold_auc_gap": float(pooled_fold_mean["auc"] - loso_mean["auc"]),
+        "fold_savings_gap": float(pooled_fold_mean["savings_95"] - loso_mean["savings_95"]),
+        "fold_cpt_gap": float(pooled_fold_mean["cpt_95"] - loso_mean["cpt_95"]),
+        "fold_apgr_gap": float(pooled_fold_mean["apgr"] - loso_mean["apgr"]),
+        # Comparison like-with-like (2): all test rows scored together (pooled_retrained - loso_test_metrics)
+        "oof_auc_gap": float(pooled_metrics.auc - loso_test_metrics.auc),
+        "oof_savings_gap": float(pooled_metrics.savings_95 - loso_test_metrics.savings_95),
+        "oof_cpt_gap": float(pooled_metrics.cpt_95 - loso_test_metrics.cpt_95),
+        "oof_apgr_gap": float(pooled_metrics.apgr - loso_test_metrics.apgr),
+        # Legacy gaps for backwards compatibility:
         "cpt_gap": float(pooled_metrics.cpt_95 - loso_mean["cpt_95"]),
         "savings_gap": float(pooled_metrics.savings_95 - loso_mean["savings_95"]),
         "apgr_gap": float(pooled_metrics.apgr - loso_mean["apgr"]),
@@ -501,6 +557,8 @@ def run_real_loso(
         loso_mean=loso_mean,
         pooled_retrained=pooled_metrics,
         gaps=gaps,
+        loso_test_metrics=loso_test_metrics,
+        pooled_fold_mean=pooled_fold_mean,
     )
 
 

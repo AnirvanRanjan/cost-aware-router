@@ -52,12 +52,16 @@ def load_frame(pred_path, corpus_path, scores_path, small, large):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--corpus", type=Path, default=Path("artifacts/routerbench/corpus.parquet"))
-    ap.add_argument("--scores", type=Path, default=Path("artifacts/routerbench/scores.parquet"))
+    default_corpus = Path("artifacts/routerbench/corpus.parquet") if Path("artifacts/routerbench/corpus.parquet").exists() else Path("artifacts/synthetic/corpus.parquet")
+    default_scores = Path("artifacts/routerbench/scores.parquet") if Path("artifacts/routerbench/scores.parquet").exists() else Path("artifacts/synthetic/scores.parquet")
+    default_small = "mistralai/mixtral-8x7b-chat" if Path("artifacts/routerbench/corpus.parquet").exists() else "qwen3.5-4b"
+    default_large = "gpt-4-1106-preview" if Path("artifacts/routerbench/corpus.parquet").exists() else "claude-sonnet-4.6"
+    ap.add_argument("--corpus", type=Path, default=default_corpus)
+    ap.add_argument("--scores", type=Path, default=default_scores)
     ap.add_argument("--predictions", type=Path, default=Path("artifacts/predictions/all_interim.parquet"))
     ap.add_argument("--features", type=Path, default=None)
-    ap.add_argument("--small", type=str, default="mistralai/mixtral-8x7b-chat")
-    ap.add_argument("--large", type=str, default="gpt-4-1106-preview")
+    ap.add_argument("--small", type=str, default=default_small)
+    ap.add_argument("--large", type=str, default=default_large)
     ap.add_argument("--source", type=str, default="mmlu")
     ap.add_argument("--n-folds", type=int, default=10)
     ap.add_argument("--seed", type=int, default=42)
@@ -188,6 +192,8 @@ def main() -> None:
 
             p_ret = loso_summary.pooled_retrained
             l_mean = loso_summary.loso_mean
+            l_oof = loso_summary.loso_test_metrics
+            p_fold_mean = loso_summary.pooled_fold_mean
             gaps = loso_summary.gaps
 
             lines += [
@@ -196,24 +202,53 @@ def main() -> None:
                 f"Subjects grouped into {len(loso_summary.fold_table)} held-out folds. For each fold, "
                 "the router is retrained with that fold's train rows removed, then evaluated on the fold's test rows.",
                 "",
-                "| Fold | Subjects Sample | Subjects Count | Test n | AUC | CPT(95%) | Savings@PGR .95 | APGR |",
+                "### Fold-by-Fold Results",
+                "",
+                "| Fold | Subjects Sample | Subjects Count | Test n | LOSO AUC | Pooled Fold AUC | LOSO Savings@PGR .95 | Pooled Fold Savings |",
                 "|---|---|--:|--:|:--:|:--:|:--:|:--:|",
             ]
             for _, r_fold in loso_summary.fold_table.iterrows():
                 lines.append(
                     f"| {int(r_fold['fold'])} | {r_fold['subjects']} | {int(r_fold['n_subjects'])} | "
-                    f"{int(r_fold['n_test']):,} | {r_fold['auc']:.4f} | {r_fold['cpt_95']:.4f} | "
-                    f"{r_fold['savings_95']:.1%} | {r_fold['apgr']:.4f} |"
+                    f"{int(r_fold['n_test']):,} | {r_fold['auc']:.4f} | {r_fold.get('pooled_fold_auc', np.nan):.4f} | "
+                    f"{r_fold['savings_95']:.1%} | {r_fold.get('pooled_fold_savings_95', np.nan):.1%} |"
                 )
             lines += [
-                f"| **True LOSO Mean** | — | — | {int(loso_summary.fold_table['n_test'].sum()):,} | "
-                f"{l_mean['auc']:.4f} | {l_mean['cpt_95']:.4f} | {l_mean['savings_95']:.1%} | {l_mean['apgr']:.4f} |",
-                f"| **Pooled (Retrained)** | All subjects in train | {c_source['subject'].nunique()} | {len(qids_te):,} | "
-                f"{p_ret.auc:.4f} | {p_ret.cpt_95:.4f} | {p_ret.savings_95:.1%} | {p_ret.apgr:.4f} |",
                 "",
-                f"**True Generalization Gap (Pooled - True LOSO):** CPT {gaps['cpt_gap']:+.4f}, "
-                f"savings {gaps['savings_gap']:+.1%}, APGR {gaps['apgr_gap']:+.4f}. "
-                f"Worst fold: **Fold {gaps['worst_fold']}** ({gaps['worst_fold_subjects']}, savings {gaps['worst_savings']:.1%}).",
+                "### Like-With-Like Comparisons",
+                "",
+                "To compare like with like, we examine both: (1) averaging metrics across the exact same folds, "
+                "and (2) scoring predictions across all test rows together.",
+                "",
+                "| Evaluation Scheme | Comparison Basis | Test n | AUC | CPT(95%) | Savings@PGR .95 | APGR |",
+                "|---|---|--:|:--:|:--:|:--:|:--:|",
+            ]
+            if p_fold_mean is not None:
+                lines.append(
+                    f"| **Pooled Baseline (Fold Mean)** | Same folds averaged | {int(loso_summary.fold_table['n_test'].sum()):,} | "
+                    f"{p_fold_mean['auc']:.4f} | {p_fold_mean['cpt_95']:.4f} | {p_fold_mean['savings_95']:.1%} | {p_fold_mean['apgr']:.4f} |"
+                )
+            lines.append(
+                f"| **LOSO Retrained (Fold Mean)** | Same folds averaged | {int(loso_summary.fold_table['n_test'].sum()):,} | "
+                f"{l_mean['auc']:.4f} | {l_mean['cpt_95']:.4f} | {l_mean['savings_95']:.1%} | {l_mean['apgr']:.4f} |"
+            )
+            lines.append(
+                f"| **Pooled Baseline (All Test Rows)** | All test rows scored | {len(qids_te):,} | "
+                f"{p_ret.auc:.4f} | {p_ret.cpt_95:.4f} | {p_ret.savings_95:.1%} | {p_ret.apgr:.4f} |"
+            )
+            if l_oof is not None:
+                lines.append(
+                    f"| **LOSO Out-of-Fold (All Test Rows)** | All test rows scored | {len(qids_te):,} | "
+                    f"{l_oof.auc:.4f} | {l_oof.cpt_95:.4f} | {l_oof.savings_95:.1%} | {l_oof.apgr:.4f} |"
+                )
+            lines += [
+                "",
+                f"**Like-with-like Generalization Gaps:**",
+                f"- **Fold-level average gap (Pooled Fold Mean - LOSO Fold Mean):** AUC {gaps.get('fold_auc_gap', 0.0):+.4f}, "
+                f"Savings {gaps.get('fold_savings_gap', 0.0):+.1%}, CPT {gaps.get('fold_cpt_gap', 0.0):+.4f}.",
+                f"- **All test rows gap (Pooled Retrained - LOSO Out-of-Fold):** AUC {gaps.get('oof_auc_gap', 0.0):+.4f}, "
+                f"Savings {gaps.get('oof_savings_gap', 0.0):+.1%}, CPT {gaps.get('oof_cpt_gap', 0.0):+.4f}.",
+                f"- Worst fold: **Fold {gaps['worst_fold']}** ({gaps['worst_fold_subjects']}, savings {gaps['worst_savings']:.1%}).",
                 "",
             ]
 
