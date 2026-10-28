@@ -8,14 +8,16 @@ Provides:
   * AUC: Classification AUC for identifying questions where Large wins
   * Spearman rho: Rank correlation between routing score and true gap
   * Ablation table builder matching DESIGN.md § 4.3
+  * T26: leave-one-subject-out (LOSO) evaluation per MMLU subject, grouped vs LOSO gap
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 
 from router.models import spearman_rho
@@ -234,6 +236,329 @@ def evaluate_router_config(
         mean_q_at_95=float(curve.qualities[curve.pgrs >= 0.95][0]) if (curve.pgrs >= 0.95).any() else float(np.mean(y_L)),
         q_S=float(np.mean(y_S)),
         q_L=float(np.mean(y_L)),
+    )
+
+
+# ~~ T26: within-subject evaluation and real leave-one-subject-out (LOSO) on MMLU ~~
+# MMLU questions carry a subject label (router/data.py splits the "mmlu-<subject>" template
+# name). A router trained on all subjects can look good on the pooled test split while quietly
+# memorising subject-level difficulty (MMLU subjects differ a lot: moral_scenarios vs anatomy).
+#
+# (1) Within-subject evaluation: scores an existing router per subject on its own held-out test rows
+#     to check within-subject discrimination.
+# (2) Real LOSO: retrains the router (e.g. LogisticRegression on F2) with each subject fold's train
+#     rows completely removed from training, then evaluates on that fold's test rows.
+
+
+@dataclass(frozen=True)
+class WithinSubjectSummary:
+    """Within-subject evaluation result on existing router predictions (T26).
+
+    subject_table : one RoutingMetrics row per subject, plus the subject name and n
+    pooled        : metrics on all subjects together (the grouped-split view)
+    gaps          : pooled (grouped) minus mean over subjects; positive cpt/savings gaps mean
+                    the pooled number is flattered by between-subject ranking.
+    """
+
+    subject_table: pd.DataFrame
+    pooled: RoutingMetrics
+    gaps: dict
+
+
+# Backwards compatibility alias
+LOSOSummary = WithinSubjectSummary
+
+
+def within_subject_eval(
+    name: str,
+    subjects: Sequence[str | None],
+    routing_scores: Sequence[float] | np.ndarray,
+    s_S: Sequence[float] | np.ndarray,
+    s_L: Sequence[float] | np.ndarray,
+    costs_S: Sequence[float] | np.ndarray | None = None,
+    costs_L: Sequence[float] | np.ndarray | None = None,
+    min_subject_n: int = 1,
+) -> WithinSubjectSummary:
+    """Evaluate an existing router within each subject vs pooled.
+
+    For every subject, runs `evaluate_router_config` on that subject's test rows alone.
+    Rows whose subject is None enter the pooled row but are folded into "(no subject)"
+    only if any such rows exist.
+    """
+    subjects = np.asarray([str(s) if s is not None else "(no subject)" for s in subjects], dtype=object)
+    scores = np.asarray(routing_scores, dtype=float)
+    y_S = np.asarray(s_S, dtype=float)
+    y_L = np.asarray(s_L, dtype=float)
+    if not len(subjects) == len(scores) == len(y_S) == len(y_L):
+        raise ValueError("subjects, routing_scores, s_S and s_L must have the same length")
+
+    if np.isnan(scores).any():
+        raise ValueError("routing_scores contain NaN")
+
+    rows: list[dict] = []
+    folded: dict[str, np.ndarray] = {}
+    for subj in pd.unique(subjects):
+        folded[str(subj)] = np.flatnonzero(subjects == subj)
+
+    for subj, idx in sorted(folded.items()):
+        if len(idx) < min_subject_n:
+            continue
+        metrics = evaluate_router_config(
+            str(subj), scores[idx], y_S[idx], y_L[idx], costs_S=None if costs_S is None else np.asarray(costs_S, dtype=float)[idx],
+            costs_L=None if costs_L is None else np.asarray(costs_L, dtype=float)[idx],
+        )
+        rows.append({
+            "subject": str(subj),
+            "n": len(idx),
+            "auc": metrics.auc,
+            "rho": metrics.spearman_rho,
+            "cpt_95": metrics.cpt_95,
+            "savings_95": metrics.savings_95,
+            "apgr": metrics.apgr,
+            "q_S": metrics.q_S,
+            "q_L": metrics.q_L,
+        })
+    if not rows:
+        raise ValueError("no fold had at least min_subject_n rows; nothing to report")
+
+    pooled_metrics = evaluate_router_config(name, scores, y_S, y_L, costs_S=costs_S, costs_L=costs_L)
+    table = pd.DataFrame(rows).sort_values("subject", kind="stable").reset_index(drop=True)
+    mean = table[["cpt_95", "savings_95", "apgr"]].mean(numeric_only=True)
+    worst = int(table["savings_95"].idxmin()) if len(table) >= 1 else None  # first min on ties
+    gaps = {
+        "cpt_gap": float(pooled_metrics.cpt_95 - mean["cpt_95"]),
+        "savings_gap": float(pooled_metrics.savings_95 - mean["savings_95"]),
+        "apgr_gap": float(pooled_metrics.apgr - mean["apgr"]),
+        "worst_subject": str(table.loc[worst, "subject"]),
+        "worst_savings": float(table.loc[worst, "savings_95"]),
+    }
+    return WithinSubjectSummary(subject_table=table, pooled=pooled_metrics, gaps=gaps)
+
+
+# Backwards compatibility alias
+loso_subject_eval = within_subject_eval
+
+
+@dataclass(frozen=True)
+class RealLOSOSummary:
+    """True Leave-One-Subject-Out evaluation result with model retraining (T26).
+
+    fold_table       : one row per subject fold with held-out test metrics, subjects in fold, and test n
+    loso_mean        : average metrics across the held-out folds
+    pooled_retrained : metrics of the baseline model trained on all train rows and tested on pooled test
+    loso_test_metrics: metrics scored from LOSO out-of-fold predictions on all test rows together
+    pooled_fold_mean : average metrics of the pooled baseline model evaluated per fold
+    gaps             : comparison gaps (both fold-average like-with-like and pooled out-of-fold)
+    """
+
+    fold_table: pd.DataFrame
+    loso_mean: dict[str, float]
+    pooled_retrained: RoutingMetrics
+    gaps: dict[str, Any]
+    loso_test_metrics: RoutingMetrics | None = None
+    pooled_fold_mean: dict[str, float] | None = None
+
+
+def run_real_loso(
+    X_train: np.ndarray,
+    y_train_S: np.ndarray,
+    y_train_L: np.ndarray,
+    subjects_train: Sequence[str | None],
+    X_test: np.ndarray,
+    y_test_S: np.ndarray,
+    y_test_L: np.ndarray,
+    subjects_test: Sequence[str | None],
+    costs_test_S: Sequence[float] | np.ndarray | None = None,
+    costs_test_L: Sequence[float] | np.ndarray | None = None,
+    n_folds: int = 10,
+    seed: int = 42,
+    C: float = 1.0,
+    max_iter: int = 1000,
+) -> RealLOSOSummary:
+    """True Leave-One-Subject-Out (LOSO) cross-validation with retrained Logistic Regression.
+
+    Subjects are grouped into ~n_folds folds. For each fold:
+      1. All train rows belonging to the fold's subjects are removed from training.
+      2. A LogisticRegression classifier is trained on the remaining training rows.
+      3. The model predicts routing scores on the held-out test rows for that fold's subjects.
+      4. Metrics are computed for each held-out fold, and the true LOSO gap is reported.
+    """
+    X_tr = np.asarray(X_train, dtype=np.float32)
+    y_tr_S = np.asarray(y_train_S, dtype=float)
+    y_tr_L = np.asarray(y_train_L, dtype=float)
+    s_tr = np.asarray([str(s) if s is not None else "(no subject)" for s in subjects_train], dtype=object)
+
+    X_te = np.asarray(X_test, dtype=np.float32)
+    y_te_S = np.asarray(y_test_S, dtype=float)
+    y_te_L = np.asarray(y_test_L, dtype=float)
+    s_te = np.asarray([str(s) if s is not None else "(no subject)" for s in subjects_test], dtype=object)
+
+    if not len(X_tr) == len(y_tr_S) == len(y_tr_L) == len(s_tr):
+        raise ValueError("X_train, y_train_S, y_train_L and subjects_train must have same length")
+    if not len(X_te) == len(y_te_S) == len(y_te_L) == len(s_te):
+        raise ValueError("X_test, y_test_S, y_test_L and subjects_test must have same length")
+
+    # Distinct subjects across both splits
+    all_subjects = sorted(list(set(s_tr) | set(s_te)))
+    rng = np.random.default_rng(seed)
+    shuffled_subjects = list(rng.permutation(all_subjects))
+
+    # Partition subjects into ~n_folds groups
+    k = min(n_folds, len(shuffled_subjects))
+    if k < 1:
+        raise ValueError("No subjects found to create folds")
+
+    subject_folds: list[list[str]] = [[] for _ in range(k)]
+    for i, subj in enumerate(shuffled_subjects):
+        subject_folds[i % k].append(subj)
+
+    fold_rows: list[dict[str, Any]] = []
+    loso_test_scores = np.zeros(len(X_te), dtype=float)
+    scored_test_mask = np.zeros(len(X_te), dtype=bool)
+
+    costs_S_arr = None if costs_test_S is None else np.asarray(costs_test_S, dtype=float)
+    costs_L_arr = None if costs_test_L is None else np.asarray(costs_test_L, dtype=float)
+
+    # Train pooled baseline model on all training data first
+    y_tr_all_bin = ((y_tr_L - y_tr_S) > 0.0).astype(int)
+    clf_pooled = LogisticRegression(C=C, max_iter=max_iter, random_state=seed, solver="lbfgs")
+    clf_pooled.fit(X_tr, y_tr_all_bin)
+    pooled_test_scores = clf_pooled.predict_proba(X_te)[:, 1]
+
+    pooled_fold_rows: list[dict[str, float]] = []
+
+    for fold_idx, fold_subjects in enumerate(subject_folds):
+        fold_set = set(fold_subjects)
+        # Train on all train rows whose subject is NOT in fold_set
+        tr_mask = np.array([subj not in fold_set for subj in s_tr], dtype=bool)
+        te_mask = np.array([subj in fold_set for subj in s_te], dtype=bool)
+
+        if not tr_mask.any():
+            raise RuntimeError(f"Fold {fold_idx}: no training rows remaining when holding out {fold_subjects}")
+        if not te_mask.any():
+            continue
+
+        y_tr_bin = ((y_tr_L[tr_mask] - y_tr_S[tr_mask]) > 0.0).astype(int)
+        # Handle degenerate cases where all classes are identical
+        if len(np.unique(y_tr_bin)) < 2:
+            scores_te = np.full(te_mask.sum(), float(y_tr_bin[0]))
+        else:
+            clf = LogisticRegression(C=C, max_iter=max_iter, random_state=seed, solver="lbfgs")
+            clf.fit(X_tr[tr_mask], y_tr_bin)
+            scores_te = clf.predict_proba(X_te[te_mask])[:, 1]
+
+        loso_test_scores[te_mask] = scores_te
+        scored_test_mask[te_mask] = True
+
+        m = evaluate_router_config(
+            f"fold_{fold_idx}",
+            scores_te,
+            y_te_S[te_mask],
+            y_te_L[te_mask],
+            costs_S=None if costs_S_arr is None else costs_S_arr[te_mask],
+            costs_L=None if costs_L_arr is None else costs_L_arr[te_mask],
+        )
+
+        # Evaluate pooled model on the exact same fold test rows for like-with-like fold comparison
+        m_pooled_fold = evaluate_router_config(
+            f"pooled_fold_{fold_idx}",
+            pooled_test_scores[te_mask],
+            y_te_S[te_mask],
+            y_te_L[te_mask],
+            costs_S=None if costs_S_arr is None else costs_S_arr[te_mask],
+            costs_L=None if costs_L_arr is None else costs_L_arr[te_mask],
+        )
+        pooled_fold_rows.append({
+            "auc": m_pooled_fold.auc,
+            "rho": m_pooled_fold.spearman_rho,
+            "cpt_95": m_pooled_fold.cpt_95,
+            "savings_95": m_pooled_fold.savings_95,
+            "apgr": m_pooled_fold.apgr,
+        })
+
+        fold_rows.append({
+            "fold": fold_idx,
+            "subjects": ", ".join(fold_subjects[:3]) + (f" (+{len(fold_subjects)-3} more)" if len(fold_subjects) > 3 else ""),
+            "n_subjects": len(fold_subjects),
+            "n_test": int(te_mask.sum()),
+            "auc": m.auc,
+            "rho": m.spearman_rho,
+            "cpt_95": m.cpt_95,
+            "savings_95": m.savings_95,
+            "apgr": m.apgr,
+            "pooled_fold_auc": m_pooled_fold.auc,
+            "pooled_fold_savings_95": m_pooled_fold.savings_95,
+        })
+
+    if not fold_rows:
+        raise ValueError("No test folds contained rows to evaluate")
+
+    fold_df = pd.DataFrame(fold_rows)
+
+    pooled_metrics = evaluate_router_config(
+        "pooled_f2_logreg",
+        pooled_test_scores,
+        y_te_S,
+        y_te_L,
+        costs_S=costs_S_arr,
+        costs_L=costs_L_arr,
+    )
+
+    # Score LOSO out-of-fold predictions on all test rows together
+    loso_test_metrics = evaluate_router_config(
+        "loso_out_of_fold",
+        loso_test_scores,
+        y_te_S,
+        y_te_L,
+        costs_S=costs_S_arr,
+        costs_L=costs_L_arr,
+    )
+
+    loso_mean = {
+        "auc": float(fold_df["auc"].mean()),
+        "rho": float(fold_df["rho"].mean()),
+        "cpt_95": float(fold_df["cpt_95"].mean()),
+        "savings_95": float(fold_df["savings_95"].mean()),
+        "apgr": float(fold_df["apgr"].mean()),
+    }
+
+    pooled_fold_df = pd.DataFrame(pooled_fold_rows)
+    pooled_fold_mean = {
+        "auc": float(pooled_fold_df["auc"].mean()),
+        "rho": float(pooled_fold_df["rho"].mean()),
+        "cpt_95": float(pooled_fold_df["cpt_95"].mean()),
+        "savings_95": float(pooled_fold_df["savings_95"].mean()),
+        "apgr": float(pooled_fold_df["apgr"].mean()),
+    }
+
+    worst_idx = int(fold_df["savings_95"].idxmin())
+    gaps = {
+        # Comparison like-with-like (1): fold averages (pooled_fold_mean - loso_mean)
+        "fold_auc_gap": float(pooled_fold_mean["auc"] - loso_mean["auc"]),
+        "fold_savings_gap": float(pooled_fold_mean["savings_95"] - loso_mean["savings_95"]),
+        "fold_cpt_gap": float(pooled_fold_mean["cpt_95"] - loso_mean["cpt_95"]),
+        "fold_apgr_gap": float(pooled_fold_mean["apgr"] - loso_mean["apgr"]),
+        # Comparison like-with-like (2): all test rows scored together (pooled_retrained - loso_test_metrics)
+        "oof_auc_gap": float(pooled_metrics.auc - loso_test_metrics.auc),
+        "oof_savings_gap": float(pooled_metrics.savings_95 - loso_test_metrics.savings_95),
+        "oof_cpt_gap": float(pooled_metrics.cpt_95 - loso_test_metrics.cpt_95),
+        "oof_apgr_gap": float(pooled_metrics.apgr - loso_test_metrics.apgr),
+        # Legacy gaps for backwards compatibility:
+        "cpt_gap": float(pooled_metrics.cpt_95 - loso_mean["cpt_95"]),
+        "savings_gap": float(pooled_metrics.savings_95 - loso_mean["savings_95"]),
+        "apgr_gap": float(pooled_metrics.apgr - loso_mean["apgr"]),
+        "worst_fold": int(fold_df.loc[worst_idx, "fold"]),
+        "worst_fold_subjects": str(fold_df.loc[worst_idx, "subjects"]),
+        "worst_savings": float(fold_df.loc[worst_idx, "savings_95"]),
+    }
+
+    return RealLOSOSummary(
+        fold_table=fold_df,
+        loso_mean=loso_mean,
+        pooled_retrained=pooled_metrics,
+        gaps=gaps,
+        loso_test_metrics=loso_test_metrics,
+        pooled_fold_mean=pooled_fold_mean,
     )
 
 

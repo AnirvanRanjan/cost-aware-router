@@ -10,7 +10,7 @@ target:
 
 threshold:
   delta: 0.05                  # 1 - confidence of the lower bound
-  bound: paired_bootstrap      # hoeffding | bernstein | paired_bootstrap
+  bound: wsr                   # wsr | hoeffding | bernstein | paired_bootstrap
   bootstrap_B: 2000
   selection: learn_then_test
 

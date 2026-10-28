@@ -125,10 +125,12 @@ class _Prefix:
 
 
 def breakpoints(scores) -> np.ndarray:
-    """Every threshold at which the routing changes: +inf side first, then each distinct score.
+    """Every threshold at which the routing changes: the distinct scores descending, then -inf.
 
-    tau = max(score) sends nothing to L; tau = -inf sends everything. Between consecutive distinct
-    scores nothing changes, so these are all the candidates there are.
+    tau = a distinct score sends the queries strictly above it to L (so tau = max(score) sends
+    nothing to L); tau = -inf sends everything. Between consecutive distinct scores nothing
+    changes, so these are all the candidates there are. Returned order is most-to-S first; every
+    consumer sorts into its own convention.
     """
     u = np.unique(np.asarray(scores, dtype=float))[::-1]
     return np.r_[u, -np.inf]
@@ -246,8 +248,12 @@ def reference_curves(s_S, s_L, c_S=None, c_L=None, seed: int = 0) -> dict[str, S
 # ----------------------------------------------------------------------------------------------------
 
 def hoeffding_lcb(mean: float | np.ndarray, n: int, delta: float = 0.05, width: float = 1.0):
-    """Hoeffding one-sided LCB for a mean of n i.i.d. values in an interval of length `width`."""
-    return np.asarray(mean) - width * np.sqrt(np.log(1.0 / delta) / (2.0 * n))
+    """Hoeffding one-sided LCB for a mean of n i.i.d. values in an interval of length `width`.
+
+    The output type matches the input: a scalar mean gives a scalar, an array gives an array.
+    """
+    bound = np.asarray(mean) - width * np.sqrt(np.log(1.0 / delta) / (2.0 * n))
+    return float(bound) if np.ndim(mean) == 0 else bound
 
 
 def _margin_columns(s_S, s_L, rho):
