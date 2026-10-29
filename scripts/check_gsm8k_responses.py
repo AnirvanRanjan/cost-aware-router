@@ -23,6 +23,7 @@ def main() -> None:
     ap.add_argument("responses", type=Path)
     ap.add_argument("--corpus", type=Path, default=Path("artifacts/routerbench/corpus.parquet"))
     ap.add_argument("--show", type=int, default=5)
+    ap.add_argument("--max-tokens", type=int, default=512, help="the --max-tokens the run used")
     args = ap.parse_args()
 
     r = pd.read_parquet(args.responses)
@@ -42,6 +43,8 @@ def main() -> None:
     print(f"  'The answer is' line {r['marker'].mean():.3f}")
     print(f"  errors (no text)    {r['text'].isna().mean():.3f}")
     print(f"  output tokens       median {r['n_out'].median():.0f}, max {r['n_out'].max():.0f}")
+    print(f"  cut off at max      {(r['n_out'] >= args.max_tokens).mean():.3f}  (should be near 0; "
+          "otherwise raise --max-tokens)")
     if "sample_idx" in r and r["sample_idx"].max() > 0:
         per_q = r.groupby("qid")["correct"].agg(["mean", "count"])
         agree = r.groupby("qid")["text"].apply(lambda s: len({graders.extract_number(t) for t in s.fillna("")}) == 1)

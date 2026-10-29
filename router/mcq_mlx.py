@@ -97,7 +97,10 @@ class MLXOptionScorer:
                 logits_last = out[-1]
             else:
                 logits_last = out
-            return np.asarray(logits_last, dtype=np.float64)
+            # MLX models return bfloat16, which NumPy cannot read; cast inside MLX first.
+            logits_last = logits_last.astype(mx.float32)
+            mx.eval(logits_last)
+            return np.array(logits_last, dtype=np.float64)
         except (ImportError, Exception):
             pass
 

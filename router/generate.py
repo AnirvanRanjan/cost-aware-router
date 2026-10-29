@@ -45,8 +45,9 @@ DEFAULT_CLIENTS = Path(__file__).resolve().parent.parent / "configs" / "clients.
 # invalidates exactly the answers it affects. GSM8K asks for the "The answer is N." line that
 # graders.extract_number looks for first.
 PROMPT_TEMPLATES = {
-    "gsm8k": "{prompt}\n\nSolve the problem step by step. Finish with a final line of the form "
-             "'The answer is N.' where N is a number.",
+    "gsm8k": "{prompt}\n\nSolve the problem step by step, briefly: short plain-text steps, no LaTeX, "
+             "no restating the question. Finish with a final line of the form 'The answer is N.' "
+             "where N is a number.",
     "default": "{prompt}",
 }
 
