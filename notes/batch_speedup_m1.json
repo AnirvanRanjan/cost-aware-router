@@ -1,0 +1,37 @@
+{
+  "client": "qwen3.5-4b",
+  "machine": "macOS-27.0.1-arm64-arm-64bit",
+  "max_tokens": 256,
+  "n_prompts": 16,
+  "results": [
+    {
+      "batch": 1,
+      "seconds": 370.29,
+      "out_tokens": 3813,
+      "tok_per_s": 10.3,
+      "speedup": 1.0
+    },
+    {
+      "batch": 2,
+      "seconds": 331.96,
+      "out_tokens": 3791,
+      "tok_per_s": 11.4,
+      "speedup": 1.11
+    },
+    {
+      "batch": 4,
+      "seconds": 315.21,
+      "out_tokens": 3793,
+      "tok_per_s": 12.0,
+      "speedup": 1.17
+    },
+    {
+      "batch": 8,
+      "seconds": 410.26,
+      "out_tokens": 3770,
+      "tok_per_s": 9.2,
+      "speedup": 0.89
+    }
+  ],
+  "measured_utc": "2026-10-29T08:35:53Z"
+}
