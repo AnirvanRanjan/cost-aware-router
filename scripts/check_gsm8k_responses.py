@@ -42,6 +42,7 @@ def main() -> None:
     print(f"  no number found     {r['no_number'].mean():.3f}")
     print(f"  'The answer is' line {r['marker'].mean():.3f}")
     print(f"  errors (no text)    {r['text'].isna().mean():.3f}")
+    print(f"  confidence recorded {r['mean_logprob'].notna().mean():.3f}  (mean_logprob; needed for the cascade router)")
     print(f"  output tokens       median {r['n_out'].median():.0f}, max {r['n_out'].max():.0f}")
     print(f"  cut off at max      {(r['n_out'] >= args.max_tokens).mean():.3f}  (should be near 0; "
           "otherwise raise --max-tokens)")
