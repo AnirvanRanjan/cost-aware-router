@@ -14,9 +14,11 @@ advantage**, measured as **PGR (performance gap recovered)**: PGR = (Q − Q_S) 
 routing threshold τ\* is chosen with a **finite-sample confidence bound** on a held-out calibration
 split, not read off the test set.
 
-> **Status (Oct 2026):** all results below are on the **development pair, Mixtral-8x7B vs GPT-4**,
-> using RouterBench's stored answers. The headline pair, **Qwen3.5-4B vs GPT-4** (DECISIONS.md D-08),
-> needs Qwen's own answers from the Mac (Track B) and is not run yet.
+> **Status (Nov 2026):** the development pair, **Mixtral-8x7B vs GPT-4**, uses RouterBench's stored
+> answers. The headline pair, **Qwen3.5-4B vs GPT-4**, now has Qwen's own answers (Track B, generated on
+> an H100, D-13). First headline preview: a cascade router on Qwen's own confidence saves **47.5%
+> [45.4, 49.7] with the guarantee**, about 1.9× cheaper (`notes/trackb_results.md`). Numbers are locked
+> only at T28.
 
 ---
 

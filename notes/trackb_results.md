@@ -58,7 +58,10 @@ References on the same test set: random needs 96% frontier calls for PGR 0.95, t
    features with this much training data. Lane B should regularise or reduce F2 before combining.
 5. **The cascade costs latency, not money:** under M1 the 3 Qwen samples are free, but every escalated
    question pays for Qwen first. Report latency on the M2 (T47).
-6. **PGR above 100%** is real: on some questions Qwen is right and GPT-4 wrong, so keeping those local
+6. **One answer is nearly enough.** A quick check with only Qwen's first sample (its log-probability, no
+   agreement) certified ~37% savings (uniform-cost approximation), so the demo can use one answer plus its
+   confidence (proposed D-14) at a third of the latency.
+7. **PGR above 100%** is real: on some questions Qwen is right and GPT-4 wrong, so keeping those local
    beats always-GPT-4.
 
 ## Next

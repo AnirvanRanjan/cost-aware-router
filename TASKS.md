@@ -1,146 +1,132 @@
 # Every task, from here to the defence
 
-The project ends with **the router working live on a Mac**. That one requirement reshapes the plan:
-the demo can't use Mixtral or GPT-4 (neither runs on a laptop, and GPT-4 costs money), so it needs
-its own model pair, and a router trained for that pair. This file lists every remaining task, in order.
+The project ends with **the router working live on a Mac**. This file lists every task with its
+status. Updated 2026-11-01, after Track B (Qwen's answers) came back from the H100.
 
-Owners: **A** Data (Ani) · **B** Features & router (HSID007) · **C** Evaluation & statistics ·
-**D** Systems & demo (kartiken07, has the M2). **All** = whole team. IDs are stable; reference them
-in branch names and PRs (e.g. `b/T12-embeddings`).
+Owners: **A** Data (Ani) · **B** Features & router (HSID007) · **C** Evaluation & statistics
+(Sarthak, SjScripter) · **D** Systems & demo (kartiken07, has the M2). **All** = whole team.
+IDs are stable; reference them in branch names and PRs (e.g. `b/T36-qwen-head`).
+Status: ✅ done · 🔶 in progress / needs a fix · ⬜ not started.
 
 ---
 
-## This week — start here
+## Where we are
 
-Done already: the code foundation, the RouterBench audit, the loader with re-graded GSM8K (T03),
-near-duplicate grouping (T04), and kartiken07's measured M2 speeds. The data is a GitHub release:
+- **Data:** frozen (D-11). Track A = RouterBench (Mixtral, Yi-34B vs GPT-4); Track B = Qwen3.5-4B vs GPT-4,
+  generated on a UPES H100 (D-13).
+- **Headline so far (preview, `notes/trackb_results.md`):** a cascade router on **Qwen's own confidence**
+  saves **47.5% [45.4, 49.7] with the guarantee** (PGR ≥ 0.95, τ\* from cal, test once), about **1.9× cheaper**.
+  Question-only routing saves 9.3%. Test curve suggests ~78% is reachable if the bound gets tighter.
+- **Demo:** server, web page and offline mode exist but have never run with the real models.
 
 ```bash
+# Data (both tracks)
 gh release download data-910a584c8279baa7 -R AnirvanRanjan/cost-aware-router -D artifacts/routerbench \
   -p corpus.parquet -p scores.parquet -p dedup_pairs.parquet -p manifest.json -p SHA256SUMS
 gh release download data-910a584c8279baa7 -R AnirvanRanjan/cost-aware-router -D artifacts/features -p features.parquet
+gh release download trackb-6265adf7ffa4a602 -R AnirvanRanjan/cost-aware-router -D artifacts/trackb
 python scripts/verify_data.py        # must print "Same data as everyone else."
 ```
 
-**Everyone, first:** read `DECISIONS.md` (D-05 to D-08 are new) and approve or object on PR #4.
-Then review the open PRs: #3 audit, #4 loader + decisions, the dedup PR, and this task plan.
+## This week
 
 | Who | Do this now | Why it can't wait |
 |---|---|---|
-| **A** · Ani | ✅ T58 decided (repo stays public). ✅ T35 code written (`router/trackb.py`), ready for Qwen's results. ✅ T07 gold letters done. Next: the embedding dedup pass when B hands over F2. | T35 is on the critical path to the headline result |
-| **B** · HSID007 | Full brief: `briefs/B.md`. **T32 first:** the `mcq_logprob` grader. Then T10–T12 (heuristics, TF-IDF, `bge-base` embeddings) on the real corpus, and hand the F2 file to A for the embedding dedup pass. | D needs T32 before Qwen can be scored on MMLU, ARC and Winogrande |
-| **C** | T05 (two-line fix), then T20–T21: metrics and the exact threshold sweep, tested on synthetic data and then run on the Mixtral scores already in the release. | The first real Pareto curve (week 8) is built on these |
-| **D** · kartiken07 | **T30 first:** `generate.py` with the MLX client and the cache. Then T31 (batched decoding), T06 (branch protection) and T40 (Gemini key on the M2). | T30 → T33 is the longest chain in the project: Qwen's overnight runs feed both the headline and the demo |
-
-## The demo, decided up front
-
-| Piece | Choice | Why |
-|---|---|---|
-| Machine | The 16 GB M2 | It ran Qwen3.5-4B at 28.5 tok/s, measured |
-| Small model (local) | **Qwen3.5-4B, 4-bit, MLX** (~3 GB) | Measured speed; fits with room for everything else. Also the headline result (DECISIONS D-08) |
-| Frontier model (API) | **Gemini 3 Flash, free tier**; GitHub Models GPT-4o-class as backup | $0; a live demo sends a few dozen queries, far under the free limits |
-| Router | Same architecture as Track A, **with the small-model head retrained on Qwen's own answers** | A router learns *when its small model fails*. Mixtral's failures aren't Qwen's |
-| Cost shown on screen | Frontier queries priced at Sonnet 4.6 list rate, local at $0 | Same cost model as the paper (DESIGN Rev A) |
-| If the Wi-Fi dies | Cached frontier answers for the demo queries, plus a recorded video | Live demos fail at defences |
-
-**Why the two-head design pays off here:** swapping the small model means retraining one head
-(`ŝ_S`), not the whole router. The frontier head (`ŝ_L`) is trained on RouterBench's GPT-4 scores
-and stays as is: Gemini 3 Flash is at least as strong, so it is a conservative stand-in.
-
-**Memory budget on the M2 during the demo:** Qwen ~3 GB + embedding model ~0.5 GB + Python and the
-web app ~1 GB. About 5 GB of 16, so it runs alongside a browser and a slide deck.
+| **All** | Read `notes/trackb_results.md`; reply yes/no on **D-14** (demo uses one Qwen answer + its confidence). Review PR #18. | D-14 decides how the demo router is built |
+| **A** · Ani | Merge #17 once its chapter is fixed, and #18. Rewrite chapters 1–3 in your own words; add the Track B numbers to ch. 1. Re-run T45 when B's bundle exists. | Everyone builds on `main` |
+| **B** · HSID | **T36 + T61**: the official cascade router for the Qwen pair, then **T41** the demo bundle. Then T51 (chapter). | The demo, T37 and T28 all wait on it |
+| **C** · Sarthak | Fix `chapter_C_draft.md` (see PR #17 review) so #17 can merge. Then **T60** (tighter certification) and **T37** on the Qwen pair. | The headline number is his |
+| **D** · Kartiken | **T40** (Gemini key), **T59** (4-bit Mac vs GPU labels, 200 questions), **T42/T43** first real demo run on the M2. Runbook: `notes/runbook_trackb.md`. | The demo is the one thing only the M2 can do |
 
 ---
 
-## Phase 0 · Close out week 2 (now)
+## Phase 0 · Foundations
 
-| ID | Owner | Task | Done when |
+| ID | Owner | Task | Status |
 |---|---|---|---|
-| T01 | All | Agree the model pairs (DECISIONS D-05 to D-08): Qwen vs GPT-4 is the headline and the demo; Mixtral vs GPT-4 the development pair and the RouteLLM comparison; Yi-34B optional; Mistral-7B dropped; HellaSwag reported separately. | PR #4 approved by every lane |
-| T02 | All | Review and merge PR #3 (audit), then PR #4 (loader). One reviewer per lane on #4, since it changes `schema.py` and `costs.py`. | Both merged into `main` |
-| T03 | A | ✅ Done. Loader rerun with Mixtral + Yi-34B; data published as release `data-3f774421cc116201`. | — |
-| T04 | A | ✅ Both passes done, **splits frozen** (D-11): 1,883 pairs, embedding pass on template-centred vectors (`notes/dedup_report.md`). | Report shows the embedding pass ran |
-| T07 | A | ✅ Done. Gold letters in `corpus.reference`: ARC 99.1%, MMLU 95.5%, Winogrande 100%, HellaSwag 97.6%, 0 conflicts. Release `data-3f774421cc116201`. | — |
-| T05 | C | Fix `estimate_spend.py` so measured and estimated speeds are labelled separately. | Output says which is which |
-| T06 | D | Branch protection on `main`, PR template, `CODEOWNERS` so any `schema.py` change requests every lane. | A test PR shows the rules |
+| T01 | All | Agree the model pairs (D-05 to D-08) | ✅ |
+| T02 | All | Review and merge the audit and loader PRs | ✅ |
+| T03 | A | Loader: RouterBench → corpus + scores, GSM8K re-graded | ✅ |
+| T04 | A | Near-duplicate grouping, both passes; **splits frozen** (D-11) | ✅ |
+| T05 | C | `estimate_spend.py`: measured vs estimated speeds labelled | ✅ |
+| T06 | D | `CODEOWNERS` + PR template ✅; branch protection on `main` ⬜ (Ani can do it in repo settings) | 🔶 |
+| T07 | A | Gold answer letters for multiple choice | ✅ |
 
-## Track A · The research result (RouterBench, no model runs)
+## Track A · Research result on RouterBench (Mixtral pair)
 
-| ID | Owner | Task | Needs | Done when |
-|---|---|---|---|---|
-| T10 | B | F0: ~25 heuristic features as a pure function | — | Hand-computed values match in tests |
-| T11 | B | F1: TF-IDF, word 1–2 + char 3–5 grams, fit on train only | — | Fit-on-train enforced by a test |
-| T12 | B | ✅ F2: `bge-base-en-v1.5` embeddings for all 34,778 prompts (B's script, run on A's M1; in the data release) | T03 | One file, minutes to compute on any Mac |
-| T13 | B | Baselines: logistic regression on F0, F1; XGBoost on F0+F2 | T10–T12 | Validation Spearman ρ per feature set |
-| T14 | B | Two-head MLP (ŝ_S, ŝ_L), soft-label loss + gap term, 5 seeds | T12 | `predictions.parquet` written |
-| T15 | B | Isotonic calibration per head; reliability diagrams + ECE | T14 | Before/after figures in `notes/` |
-| T16 | B | Ablation ladder: F0 → F1 → XGBoost → F2 → F2+F0 → cost-normalised rule v2 | T13–T15 | Every row of the DESIGN §4.3 table filled |
-| T20 | C | `eval.py`: Q(τ), C(τ), PGR, APGR, random and oracle curves | — | Oracle ≥ router ≥ random on synthetic data |
-| T21 | C | `threshold.py`: exact O(n log n) sweep + concave envelope | — | Matches brute force on 200 random cases |
-| T22 | C | Lower bounds: Hoeffding, paired bootstrap | T21 | Tested on a low-headroom synthetic set |
-| T23 | C | Learn-then-Test τ\* selection | T22 | τ\* chosen on `cal` only, by construction |
-| T24 | C | Cost model M2 (hardware time) and a batch-API frontier baseline | — | Both baselines in every savings number |
-| T25 | C | `plot_pareto.py` panels A–D, with random and oracle on every plot | T20–T23 | First real Pareto figure (week-8 gate) |
-| T26 | C | Leave-one-subject-out evaluation on MMLU | T04, T25 | Grouped vs LOSO gap reported |
-| T27 | C | Headroom sweep: savings vs gap, across Mixtral and Qwen (and Yi-34B if time allows) | T25, T37 | One figure, two or three pairs |
-| T28 | C | **Lock the numbers**: CPT(95%) and savings on the untouched test split, with confidence intervals — **Qwen pair as the headline**, Mixtral pair as the comparison | all above | No number changes after this |
+| ID | Owner | Task | Status |
+|---|---|---|---|
+| T10 | B | F0 heuristic features | ✅ |
+| T11 | B | F1 TF-IDF features, fit on train only | ✅ |
+| T12 | B | F2 `bge-base` embeddings (in the data release) | ✅ |
+| T13 | B | Baselines: LogReg on F0/F1, XGBoost on F0+F2 | ✅ |
+| T14 | B | Two-head MLP, 5 seeds, train predictions saved | ✅ |
+| T15 | B | Isotonic calibration per head, reliability diagrams, ECE | ✅ |
+| T16 | B | Ablation ladder (DESIGN §4.3) on frozen splits | ✅ |
+| T20 | C | `eval.py`: curves, PGR, APGR, random and oracle | ✅ |
+| T21 | C | `threshold.py`: exact sweep + concave envelope | ✅ |
+| T22 | C | Bounds: Hoeffding, WSR (default), paired bootstrap | ✅ |
+| T23 | C | Learn-then-Test τ\* on cal only | ✅ |
+| T24 | C | Cost model M2 + Batch-API baseline | ✅ |
+| T25 | C | `plot_pareto.py` panels A–D | ✅ |
+| T26 | C | Leave-one-subject-out on MMLU, like-for-like (PR #17) | 🔶 merge after the chapter fix |
+| T27 | C | Headroom sweep: savings vs gap across Mixtral, Yi-34B and Qwen | ⬜ |
+| T28 | C | **Lock the numbers**: Qwen pair headline, Mixtral pair comparison, CIs, test once | ⬜ needs T37 |
 
-## Track B · The Mac model (the headline result and the demo)
+## Track B · The Qwen pair (headline result)
 
-| ID | Owner | Task | Needs | Done when |
-|---|---|---|---|---|
-| T30 | D | `generate.py`: one client interface; `MLXClient` (local) and `OpenAICompatClient` (Gemini / GitHub Models); content-hash cache; resumable | — | Re-running makes zero model calls |
-| T31 | D | Batched MLX decoding; measure the real batch speed-up on the M2 | T30 | Speed-up committed to `models.yaml` |
-| T32 | B | `mcq_logprob` grader: score A/B/C/D by the model's next-token probability, in one forward pass | — | Can't produce an "always A" failure |
-| T33 | D | **Overnight run on the M2:** Qwen3.5-4B on all 7,450 GSM8K questions, k=1. About 18 h unbatched, ~5 h batched. Plugged in, lid open. | T30, T31 | Responses cached; run survives a restart |
-| T34 | D | Qwen3.5-4B on MMLU, ARC, Winogrande via `mcq_logprob`. About 2 h total. | T32 | Scores for ~16,800 questions |
-| T35 | A | Track B `scores.parquet`: Qwen's scores beside RouterBench's GPT-4 scores, same qids, same splits; headroom kill-check | T33, T34 | Gap per dataset reported |
-| T36 | B | Retrain **only the small-model head** on Qwen's labels; calibrate on Qwen's `cal` split | T14, T35 | `router-qwen` bundle exported |
-| T37 | C | τ\* for the Qwen pair (Learn-then-Test) and its Pareto curve | T23, T36 | The τ\* the demo will use |
+| ID | Owner | Task | Status |
+|---|---|---|---|
+| T30 | D | `generate.py`: MLX + OpenAI-compatible clients, cache, resumable | ✅ |
+| T31 | D | Batched decoding speed-up: 1.17× on the M1 (`notes/batch_speedup_m1.json`); measure on the M2 | 🔶 |
+| T32 | B | `mcq_logprob` scorer (bf16 fix applied) | ✅ |
+| T33 | D | Qwen on GSM8K — **done on the H100 instead** (7,450 × 3 samples, D-13) | ✅ |
+| T34 | D | Qwen on MMLU / ARC / Winogrande — **done on the H100** (16,130 questions) | ✅ |
+| T35 | A | Track B scores aligned with GPT-4; release `trackb-6265adf7ffa4a602` | ✅ |
+| T36 | B | Router for the Qwen pair: retrain the small-model head on Qwen's labels; calibrate on cal | ⬜ |
+| T37 | C | τ\* for the Qwen pair (Learn-then-Test) and its Pareto curve, for the final router | ⬜ needs T36/T61 |
+| **T59** | D | **4-bit vs bf16**: run the Mac's 4-bit Qwen on the same ~200 test questions (GSM8K + MMLU) and compare accuracy and confidence with the H100 labels | ⬜ new |
+| **T60** | C | **Tighter certification**: the WSR bound certifies 67% frontier calls where the test curve needs ~40%. Try per-dataset τ\*, a coarser grid, and report how much each recovers (cal only!) | ⬜ new |
+| **T61** | B | **Cascade router (D-12, D-14)**: official version of `scripts/16_trackb_preview.py`. Two variants: k = 3 (agreement + log-prob, research table) and 1 answer + confidence (demo). Regularise or reduce F2 before combining (it hurt in the preview) | ⬜ new |
 
-## Demo · The router working live on the Mac
+## Demo · The router live on a Mac
 
-| ID | Owner | Task | Needs | Done when |
-|---|---|---|---|---|
-| T40 | D | Gemini and GitHub Models keys in `.env` on the M2; free-tier rate limits checked | — | One call to each succeeds |
-| T41 | B | Router bundle: one file holding encoder name, heuristics version, head weights, calibrators, τ\*; `router.predict(text)` | T36, T37 | Same decisions as the evaluation code on 1,000 test queries |
-| T42 | D | `serve.py` (FastAPI): `/route` (decision only), `/chat` (route, generate, stream), `/stats` (running totals). Qwen and the router load once at start-up. | T30, T41 | Router decision p99 < 15 ms on the M2 |
-| T43 | D | Web page: query box → **routed to local or API**, predicted ŝ_S / ŝ_L against τ\*, the answer streaming in, latency, this query's cost, **money saved so far vs always-frontier** | T42 | Works in Safari and Chrome |
-| T44 | C | **Replay mode**: push 200 held-out test queries through the live router, showing accuracy against always-frontier and cost saved as it runs. This is the Pareto point, live. | T42 | Matches the offline result for the same 200 |
-| T45 | A | Demo set: 10 easy queries the router should keep local, 10 hard ones it should send out, 5 open chat prompts. Check every decision in advance. ✅ Draft in `configs/demo_set.yaml`, checker `scripts/check_demo_set.py`; interim router fails 8/10 easy ones (`notes/demo_set_check.md`) | T41 | Every planned query routes as expected |
-| T46 | D | Offline mode: cached frontier answers for the demo and replay sets; `--offline` flag | T44, T45 | Full demo runs with Wi-Fi off |
-| T47 | D | Soak test on the M2: one hour of queries; record memory peak, first-token latency, thermal throttling | T43 | Numbers in `notes/demo_perf.md` |
-| T48 | All | Record the backup video of the full demo | T46 | Video on the shared drive |
-| T49 | All | Two timed dry runs, one on a projector | T48 | Under the time limit, twice |
+| ID | Owner | Task | Status |
+|---|---|---|---|
+| T40 | D | Gemini key in `.env`; `--list-models` confirms the model id; free-tier limits noted | ⬜ |
+| T41 | B | Final router bundle (cascade, D-14), `router.predict`; same decisions as evaluation on 1,000 test questions. `router/bundle.py` is a stand-in to replace | ⬜ needs T61 |
+| T42 | D | `serve.py` running with Qwen (MLX) + Gemini on the M2; router decision p99 < 15 ms. Code exists | 🔶 never run with real models |
+| T43 | D | Web page in Safari and Chrome with real models. Code exists | 🔶 |
+| T44 | C | Replay mode: 200 test questions through the live router, matches offline (PR #17) | 🔶 merge |
+| T45 | A | Demo set (25 questions) checked against the final bundle (`scripts/check_demo_set.py`) | 🔶 draft; re-check with T41 |
+| T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | 🔶 code exists |
+| T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | ⬜ |
+| T48 | All | Backup video of the full demo | ⬜ |
+| T49 | All | Two timed dry runs, one on a projector | ⬜ |
 
 ## Report and defence
 
-| ID | Owner | Task | Done when |
+| ID | Owner | Task | Status |
 |---|---|---|---|
-| T50 | A | Chapter: datasets, the audit, re-grading, dedup and splits. Outline + every number: `notes/chapter_A_facts.md` | Draft reviewed by one teammate |
-| T51 | B | Chapter: features and router architecture, the ablation ladder | Draft reviewed |
-| T52 | C | Chapter: cost model, threshold selection, guarantees, results | Draft reviewed |
-| T53 | D | Chapter: local inference, serving, the demo, performance on the M2 | Draft reviewed |
-| T54 | A | Introduction, related work (RouteLLM, RouterBench, FrugalGPT, Learn-then-Test), conclusion; merging the chapters | Full draft |
-| T55 | D | Reproducibility: one command from raw files to every figure; tested on a fresh clone on another Mac | Someone outside the lane reproduces a figure |
-| T56 | All | Slides | Reviewed by the guide |
-| T57 | All | Viva prep: likely questions (why PGR, why not GPT-3.5 as the small model, how τ avoids leakage, what if the free tier disappears) | Each person answers every question once |
-| T58 | A | ✅ Repo stays public (D-09), MIT licence (D-10). | — |
+| T50 | A | Chapter 3, Data (`thesis/03_data.md`) | 🔶 draft; review + own wording |
+| T51 | B | Chapter 4, Features, router, ablation, cascade | ⬜ |
+| T52 | C | Chapter 5, Cost model, thresholds, guarantees, results (`notes/chapter_C_draft.md`) | 🔶 draft needs fixes |
+| T53 | D | Chapter 6, Local inference, the GPU run, serving, demo performance | ⬜ |
+| T54 | A | Ch. 1 intro + ch. 2 related work ✅ drafts; ch. 7–8 discussion and conclusion; merge all chapters | 🔶 |
+| T55 | D | Reproducibility: one command per figure, tested on a fresh clone | ⬜ |
+| T56 | All | Slides | ⬜ |
+| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | ⬜ |
+| T58 | A | Repo public (D-09), MIT licence (D-10) | ✅ |
 
 ---
 
-## Order of work
+## Order of work from here
 
 ```
-Now        T01–T06                      close week 2
-Weeks 3–5  T10–T13  T20–T24  T30–T32    everyone builds in parallel
-Weeks 5–6  T33–T34                      Qwen runs overnight on the M2
-Weeks 6–8  T14–T15  T25  T35–T36        first real Pareto, Qwen router
-Weeks 9–11 T16  T26–T27  T37  T41–T42   results harden, demo backend
-Weeks 12–13 T28  T43–T47                numbers locked, demo built
-Weeks 14–15 T48–T57                     video, dry runs, report, slides
-Week 16    defence
+Now          T36/T61 (B) · T26/T44 merge, T60 (C) · T40, T59 (D) · ch. 1–3 polish (A)
+Next 1–2 wk  T37 → T41 → T42/T43 on the M2 → T45 re-check → T46
+Then         T27, T28 (numbers locked) · T47 · chapters 4–6
+Last         T48 video · T49 dry runs · T56 slides · T57 viva prep · T54 merge
 ```
 
-**The critical path to the demo** runs through D's machine: T30 → T31 → T33/T34 → T35 → T36 →
-T37 → T41 → T42 → T43. Start T30 this week; the overnight run can't move until it's done.
+**Critical path to the demo:** T61 (B) → T37 (C) → T41 (B) → T42/T43 on the M2 (D) → T45 (A) → T46 → T48.
