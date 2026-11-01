@@ -45,6 +45,99 @@ class F0F1Featurizer:
         return np.hstack([x0, x1]).astype(np.float32)
 
 
+class F0F2Featurizer:
+    """Production headline featurizer: 768-d BGE dense embeddings + 23 z-scored heuristics (791 dims).
+
+    Sub-15ms compliance: encodes single queries via SentenceEmbeddingExtractor.
+    """
+
+    name = "f0+f2"
+
+    def __init__(
+        self,
+        mean: np.ndarray | None = None,
+        std: np.ndarray | None = None,
+        model_name: str = "BAAI/bge-base-en-v1.5",
+        device: str = "cpu",
+        extractor: Any = None,
+    ):
+        self.mean = mean
+        self.std = std
+        self.model_name = model_name
+        self.device = device
+        self._extractor = extractor
+
+    @property
+    def extractor(self):
+        if self._extractor is None:
+            from router.features import SentenceEmbeddingExtractor
+
+            self._extractor = SentenceEmbeddingExtractor(
+                model_name=self.model_name,
+                device=self.device,
+                normalize_embeddings=True,
+            )
+        return self._extractor
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_extractor"] = None
+        return state
+
+    def transform(self, texts: Sequence[str]) -> np.ndarray:
+        from router.features import heuristics
+
+        text_list = list(texts)
+        embeddings, _ = self.extractor.encode(text_list)
+        x0, _ = heuristics(text_list)
+        x0_arr = np.nan_to_num(np.asarray(x0, dtype=np.float32))
+
+        if self.mean is not None and self.std is not None:
+            std_safe = np.where(self.std < 1e-8, 1.0, self.std)
+            x0_norm = (x0_arr - self.mean) / std_safe
+        else:
+            x0_norm = x0_arr
+
+        return np.concatenate([embeddings, x0_norm], axis=1).astype(np.float32)
+
+
+class F2Featurizer:
+    """Dense embedding featurizer: 768-d BGE dense embeddings alone."""
+
+    name = "f2_embeddings"
+
+    def __init__(
+        self,
+        model_name: str = "BAAI/bge-base-en-v1.5",
+        device: str = "cpu",
+        extractor: Any = None,
+    ):
+        self.model_name = model_name
+        self.device = device
+        self._extractor = extractor
+
+    @property
+    def extractor(self):
+        if self._extractor is None:
+            from router.features import SentenceEmbeddingExtractor
+
+            self._extractor = SentenceEmbeddingExtractor(
+                model_name=self.model_name,
+                device=self.device,
+                normalize_embeddings=True,
+            )
+        return self._extractor
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_extractor"] = None
+        return state
+
+    def transform(self, texts: Sequence[str]) -> np.ndarray:
+        embeddings, _ = self.extractor.encode(list(texts))
+        return np.asarray(embeddings, dtype=np.float32)
+
+
 @dataclass
 class Decision:
     route: str               # "local" | "frontier"

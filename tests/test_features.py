@@ -202,3 +202,25 @@ def test_build_f2_features_satisfies_schema_contract(tmp_path):
     read_df = schema.read(out_file, schema.FEATURES)
     assert len(read_df) == 3
     assert len(read_df.iloc[0]["vector"]) == 16
+
+
+def test_f0f2_bundle_featurizer():
+    from router.bundle import F0F2Featurizer, F2Featurizer
+
+    mock_model = FakeSentenceTransformer(dim=16)
+    extractor = SentenceEmbeddingExtractor(model=mock_model)
+
+    prompts = ["What is 2 + 2?", "Solve the following problem: x = 1."]
+    mean_f0 = np.zeros(len(HEURISTIC_NAMES), dtype=np.float32)
+    std_f0 = np.ones(len(HEURISTIC_NAMES), dtype=np.float32)
+
+    feat = F0F2Featurizer(mean=mean_f0, std=std_f0, extractor=extractor)
+    X = feat.transform(prompts)
+
+    assert X.shape == (2, 16 + len(HEURISTIC_NAMES))
+    assert not np.isnan(X).any()
+
+    f2_only = F2Featurizer(extractor=extractor)
+    X2 = f2_only.transform(prompts)
+    assert X2.shape == (2, 16)
+

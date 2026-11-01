@@ -396,3 +396,50 @@ def test_simulated_f2_leakage_guard_on_real_data(tmp_path):
     assert res_allow.returncode == 0
 
 
+def test_retrain_small_head_freezes_trunk_and_frontier_head():
+    pytest.importorskip("torch")
+    import torch
+    import copy
+
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    N = 100
+    D = 32
+    X = np.random.randn(N, D).astype(np.float32)
+    s_S_orig = np.random.binomial(1, 0.4, size=N).astype(np.float32)
+    s_L = np.random.binomial(1, 0.8, size=N).astype(np.float32)
+    group_ids = np.array([f"g_{i % 10}" for i in range(N)])
+
+    router = TwoHeadRouter(name="test_modular", input_dim=D, hidden_dim=64, epochs=5, seed=42)
+    router.fit(X, s_S_orig, s_L, group_ids=group_ids)
+
+    # Clone initial state of all parts
+    trunk_before = copy.deepcopy(router.model.trunk.state_dict())
+    head_L_before = copy.deepcopy(router.model.head_L.state_dict())
+    head_S_before = copy.deepcopy(router.model.head_S.state_dict())
+
+    # Generate new scores for small model (e.g. Qwen or Yi standing in)
+    s_S_new = np.random.binomial(1, 0.7, size=N).astype(np.float32)
+
+    # Retrain ONLY head_S
+    router.retrain_small_head(X, s_S_new, group_ids=group_ids, epochs=5, lr=1e-2)
+
+    trunk_after = router.model.trunk.state_dict()
+    head_L_after = router.model.head_L.state_dict()
+    head_S_after = router.model.head_S.state_dict()
+
+    # Verify trunk is bitwise identical
+    for k in trunk_before:
+        assert torch.equal(trunk_before[k], trunk_after[k]), f"Trunk parameter {k} changed during head_S retrain"
+
+    # Verify head_L is bitwise identical
+    for k in head_L_before:
+        assert torch.equal(head_L_before[k], head_L_after[k]), f"Head_L parameter {k} changed during head_S retrain"
+
+    # Verify head_S changed
+    changed = any(not torch.equal(head_S_before[k], head_S_after[k]) for k in head_S_before)
+    assert changed, "Head_S weights did not update during retrain_small_head"
+
+
+
