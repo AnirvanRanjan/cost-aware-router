@@ -45,8 +45,9 @@ DEFAULT_CLIENTS = Path(__file__).resolve().parent.parent / "configs" / "clients.
 # invalidates exactly the answers it affects. GSM8K asks for the "The answer is N." line that
 # graders.extract_number looks for first.
 PROMPT_TEMPLATES = {
-    "gsm8k": "{prompt}\n\nSolve the problem step by step. Finish with a final line of the form "
-             "'The answer is N.' where N is a number.",
+    "gsm8k": "{prompt}\n\nSolve the problem step by step, briefly: short plain-text steps, no LaTeX, "
+             "no restating the question. Finish with a final line of the form 'The answer is N.' "
+             "where N is a number.",
     "default": "{prompt}",
 }
 
@@ -328,10 +329,19 @@ class MLXClient:
         mx.random.seed(params.seed * 1000 + min(sample_idx))
         encoded = [tok.encode(self.format(p, params)) for p in prompts]
         t0 = time.perf_counter()
-        res = batch_generate(model, tok, encoded, max_tokens=params.max_tokens,
-                             sampler=self._sampler(params), verbose=False)
+        try:
+            res = batch_generate(model, tok, encoded, max_tokens=params.max_tokens,
+                                 sampler=self._sampler(params), verbose=False)
+            texts = res.texts if hasattr(res, "texts") else list(res)
+            if len(texts) != len(prompts) or not all(isinstance(t, str) for t in texts):
+                raise ValueError("unexpected batch_generate output")
+        except Exception as e:   # batch_generate's signature differs between mlx-lm versions
+            import warnings
+            warnings.warn(f"mlx_lm.batch_generate failed ({type(e).__name__}: {e}); "
+                          "falling back to one prompt at a time for the rest of this run")
+            self.max_batch = 1
+            return [self.generate_one(p, params, j) for p, j in zip(prompts, sample_idx)]
         ms = (time.perf_counter() - t0) * 1000 / len(prompts)       # amortised per prompt
-        texts = res.texts if hasattr(res, "texts") else list(res)
         return [Generation(t, n_in=len(e), n_out=len(tok.encode(t)), latency_ms=ms) for t, e in zip(texts, encoded)]
 
 

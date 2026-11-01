@@ -1,0 +1,6 @@
+# Track B on a CUDA GPU (Linux). Python 3.10-3.12.
+vllm>=0.17.0          # first version with Qwen3.5 support (recipes.vllm.ai/Qwen/Qwen3.5-4B)
+pandas>=2.1
+pyarrow>=15
+pyyaml>=6
+huggingface_hub>=0.24
