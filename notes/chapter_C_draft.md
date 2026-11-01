@@ -43,25 +43,41 @@ Literature benchmarks (such as RouteLLM and FrugalGPT) frequently evaluate cost 
 Model M1 reflects the perspective of an engineering team operating existing local compute where operational and depreciation costs are pre-allocated or sunk:
 $$c_S^{(M1)}(q) = 0$$
 $$c_L^{(M1)}(q) = \frac{p_{\text{in}} \cdot n_{\text{in}}(q) + p_{\text{out}} \cdot n_{\text{out}}(q)}{10^6}$$
-Under pricing for `gpt-4-1106-preview`, input tokens cost $p_{\text{in}} = \$10.00$ per million tokens, and output tokens cost $p_{\text{out}} = \$30.00$ per million tokens. For development and replay testing, prices are tracked in `PriceTable`.
+Under the reference frontier pricing (`claude-sonnet-4.6` rates mapped per DESIGN Rev A / `configs/models.yaml`, to which `gpt-4-1106-preview` is linked via `price_as`), input tokens cost $p_{\text{in}} = \$3.00$ per million tokens, and output tokens cost $p_{\text{out}} = \$15.00$ per million tokens. For development and replay testing, prices are tracked in `PriceTable`.
 
 ### 2.2 Cost Model M2 (Hardware-Amortized Operational Cost)
 
-Model M2 accounts for real hardware depreciation and electrical power consumption incurred during local inference. Consider consumer/edge hardware (such as an Apple M2 MacBook Air 16GB, capital purchase $P_{\text{hw}} = \$1,200$, expected service lifetime $Y = 3$ years, utilized $H = 8$ hours per day at an average active power draw of $W = 30$ watts under local MLX inference, electricity tariff $R_{\text{kwh}} = \$0.15/\text{kWh}$):
+Model M2 accounts for real hardware depreciation and electrical power consumption incurred during local inference. We evaluate this on an Apple M2 MacBook Air 16GB (`configs/models.yaml`), with parameters clearly separated into hardware assumptions and empirical measurements:
 
-$$\text{DepreciationPerHour} = \frac{P_{\text{hw}}}{Y \times 365 \times H} = \frac{1200}{3 \times 365 \times 8} \approx \$0.1370/\text{hour}$$
-$$\text{PowerPerHour} = \frac{W}{1000} \times R_{\text{kwh}} = \frac{30}{1000} \times 0.15 = \$0.0045/\text{hour}$$
-$$\text{TotalOperationalCostPerHour} \approx \$0.1415/\text{hour}$$
+**Assumptions (`configs/models.yaml`):**
+- Purchase price $P_{\text{hw}} = \$1,199$
+- Expected service lifetime $Y = 3$ years (straight-line amortisation)
+- Active usage $H = 8$ hours per day
+- Power draw $W = 20$ watts (assumed active package power during decoding)
+- Electricity tariff $R_{\text{kwh}} = \$0.12/\text{kWh}$
 
-Let $v$ denote the sustained local autoregressive decoding speed (tokens per second). Generating $n_{\text{out}}$ tokens on local hardware incurs an amortized cost of:
+$$\text{DepreciationPerHour} = \frac{P_{\text{hw}}}{Y \times 365 \times H} = \frac{1199}{3 \times 365 \times 8} \approx \$0.1369/\text{hour}$$
+$$\text{PowerPerHour} = \frac{W}{1000} \times R_{\text{kwh}} = \frac{20}{1000} \times 0.12 = \$0.0024/\text{hour}$$
+$$\text{TotalOperationalCostPerHour} \approx \$0.1393/\text{hour} \quad (\approx \$0.139/\text{hour})$$
+
+**Measurements vs. Estimates (`scripts/estimate_spend.py`):**
+- Autoregressive decoding throughput $v$:
+  - `llama-3.2-3b`: **41.6 tok/s (measured)** on the team's M2 (batch 1, 4-bit MLX)
+  - `qwen3.5-4b`: **28.5 tok/s (measured)** on the team's M2 (batch 1, 4-bit MLX)
+  - `phi-4-mini` (37 tok/s), `gemma-3-4b` (32 tok/s), and `qwen3.5-9b` (13 tok/s): unmeasured hardware estimates
+- Generating $n_{\text{out}}$ tokens on local hardware incurs an amortized cost of:
 $$c_S^{(M2)}(q) = \frac{n_{\text{out}}(q)}{v \times 3600} \times \text{TotalOperationalCostPerHour}$$
+For a typical GSM8K problem (120 input / 250 output tokens), generating with local Qwen3.5-4B costs $\$0.351$ per 1,000 queries ($\$0.244$ for Llama 3.2 3B).
 
 #### Crossover Speed Analysis ($v_{\text{cross}}$)
 Local inference is only economically advantageous over calling a commercial cloud API if $c_S^{(M2)}(q) < c_L^{(M1)}(q)$. Equating the two expressions yields the critical crossover decoding throughput:
 $$v_{\text{cross}} = \frac{n_{\text{out}} \times \text{TotalOperationalCostPerHour}}{3600 \times c_L^{(M1)}(q)}$$
-For typical queries on `gpt-4-1106-preview` ($n_{\text{in}} \approx 300, n_{\text{out}} \approx 150$), $c_L \approx \$0.0075$. The crossover speed is:
-$$v_{\text{cross}} \approx \frac{150 \times 0.1415}{3600 \times 0.0075} \approx 0.78 \text{ tokens/sec}$$
-Because the Apple M2 generates ~38 tokens/sec using 4-bit MLX quantization for Qwen3.5-4B (well above $v_{\text{cross}}$), running locally is orders of magnitude cheaper than the frontier API under Model M2.
+As computed in `scripts/estimate_spend.py`, local execution on the M2 ($~~\$0.139/\text{hour}$) beats:
+- `claude-haiku-4.5` (Batch) on price above **7.1 tok/s**
+- `gemini-3-flash` (List) on price above **12.1 tok/s**
+- `gpt-5-nano` (Batch) on price above **102.5 tok/s**
+
+Because the Apple M2 sustains 28.5 tok/s for Qwen3.5-4B (and 41.6 tok/s for Llama 3.2 3B), local execution cleanly beats Claude Haiku and Gemini 3 Flash in unit economics under Model M2.
 
 ### 2.3 The Batch API Baseline
 
@@ -156,13 +172,16 @@ We report results across all headline datasets on the frozen RouterBench benchma
 | **Two-Head MLP (Rule v1)** | LTT on cal | WSR | Yes | 95.4% [94.0, 96.7] | 4.2% [3.7, 4.7] | 4.0% |
 | **Two-Head MLP (Rule v2)** | **LTT on cal** | **WSR** | **Yes** | **96.3% [95.2, 97.5]** | **9.4% [7.8, 10.9]** | **8.9%** |
 | Two-Head MLP (Rule v2) | Naive on cal | None | No | 95.1% [93.6, 96.4] | 12.7% [11.0, 14.5] | 12.1% |
-| Two-Head MLP (Rule v2) | Leaky on test | None | No | 95.0% | 14.3% (Upper bound) | 13.8% |
+| Two-Head MLP (Rule v2) | Leaky on test | None | No | 95.0% | 14.3% (Uncertified upper bound) | 13.8% |
 | **Cascade (Answer + Agreement)** | **LTT on cal** | **WSR** | **Yes** | **97.9% [96.8, 98.9]** | **26.0% [24.2, 27.9]** | **24.8%** |
 
-### 6.2 Key Findings:
+> **Certification Caveat & Leakage Warning**: As noted in `notes/ablation_ladder.md`, the 14.3% savings figure is obtained by sweeping the threshold directly on test split rows (`Savings @ PGR .95`). This represents an uncertified theoretical upper bound with test-split leakage. The true, deployable, certified savings number is **9.4% [7.8, 10.9]** using WSR on calibration. Similarly, naive cal thresholding without bounds yields an overly optimistic 12.7% point estimate that does not guarantee error rate control on unseen data.
+
+### 6.2 Key Findings & Model Comparisons:
 1. **Rule v2 Dominance**: Cost-normalized thresholding (Rule v2) more than doubles certified savings compared to quality-only thresholding (Rule v1) from 4.2% to 9.4%.
 2. **The Price of Certification**: Naive thresholding without statistical bounds claims 12.7% savings on cal, but drops below target on test. Statistical certification with WSR guarantees $\text{PGR} \ge 95\%$ while securing 9.4% net savings.
-3. **Cascade Architecture**: Inspecting small-model outputs prior to routing delivers **26.0% certified savings**, demonstrating that generation confidence features substantially outperform prompt-only embeddings.
+3. **Cascade Architecture**: Inspecting small-model outputs prior to routing delivers **26.0% certified savings** on the development pair, demonstrating that generation confidence features substantially outperform prompt-only embeddings.
+4. **Candidate Small Models (Mixtral vs. Yi-34B Caveat)**: Our development and baseline results focus on `mistralai/mixtral-8x7b-chat` (accuracy 63.2%, headroom 23.0% vs. GPT-4), which aligns directly with RouteLLM benchmarks. RouterBench also includes `zero-one-ai/Yi-34B-Chat` (accuracy 66.3%, headroom 20.0%), which offers a tighter gap; however, as decided in D-05/D-08, Yi-34B is treated as an optional secondary comparison pair for headroom sweeps rather than the primary deployment candidate.
 
 ---
 
