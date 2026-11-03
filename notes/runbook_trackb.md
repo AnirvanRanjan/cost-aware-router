@@ -4,6 +4,21 @@ Everything below runs on the 16 GB M2, from the repo root, in order. Each long s
 (Ctrl-C, lid closed, crash) and restarted with **the same command**: finished work is cached and is
 never redone. Paste the last lines of each step's output into the team chat.
 
+## macOS: pytest segfaults (three OpenMP runtimes)
+
+torch, scikit-learn and xgboost each ship their own `libomp.dylib`; loading all three in one process can
+crash Python (seen on the M2, T42). Fix: point torch's and scikit-learn's copies at Homebrew's single one.
+`pip install -U torch scikit-learn` undoes this, so redo it after upgrading.
+
+```bash
+brew install libomp
+OMP="$(brew --prefix libomp)/lib/libomp.dylib"
+for f in $(find .venv -name 'libomp.dylib' -path '*torch*' -o -name 'libomp.dylib' -path '*sklearn*'); do
+  mv "$f" "$f.bak" && ln -s "$OMP" "$f"
+done
+pytest -q
+```
+
 ## 0. Set up (once, ~15 min)
 
 ```bash

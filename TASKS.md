@@ -78,14 +78,14 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | ID | Owner | Task | Status |
 |---|---|---|---|
 | T30 | D | `generate.py`: MLX + OpenAI-compatible clients, cache, resumable | ✅ |
-| T31 | D | Batched decoding speed-up: 1.17× on the M1 (`notes/batch_speedup_m1.json`); measure on the M2 | 🔶 |
+| T31 | D | Batched decoding speed-up: M1 1.17×, M2 1.4× at batch 4 (`notes/m2_checks.md`); stays at batch 1 for log-probs. Re-check the M2's batch-1 speed (8.4 vs 28.5 tok/s) | ✅ |
 | T32 | B | `mcq_logprob` scorer (bf16 fix applied) | ✅ |
 | T33 | D | Qwen on GSM8K — **done on the H100 instead** (7,450 × 3 samples, D-13) | ✅ |
 | T34 | D | Qwen on MMLU / ARC / Winogrande — **done on the H100** (16,130 questions) | ✅ |
 | T35 | A | Track B scores aligned with GPT-4; release `trackb-6265adf7ffa4a602` | ✅ |
 | T36 | B | Router for the Qwen pair: retrain the small-model head on Qwen's labels; calibrate on cal | ⬜ |
 | T37 | C | τ\* for the Qwen pair (Learn-then-Test) and its Pareto curve, for the final router | ⬜ needs T36/T61 |
-| **T59** | D | **4-bit vs bf16**: run the Mac's 4-bit Qwen on the same ~200 test questions (GSM8K + MMLU) and compare accuracy and confidence with the H100 labels | ⬜ new |
+| **T59** | D | **4-bit vs bf16** on 200 test questions: no measurable gap (GSM8K −2, MMLU +3 points, ±7) — `notes/m2_checks.md` | ✅ |
 | **T60** | C | **Tighter certification**: the WSR bound certifies 67% frontier calls where the test curve needs ~40%. Try per-dataset τ\*, a coarser grid, and report how much each recovers (cal only!) | ⬜ new |
 | **T61** | B | **Cascade router (D-12, D-14)**: official version of `scripts/16_trackb_preview.py`. Two variants: k = 3 (agreement + log-prob, research table) and 1 answer + confidence (demo). Regularise or reduce F2 before combining (it hurt in the preview) | ⬜ new |
 
@@ -93,10 +93,10 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 
 | ID | Owner | Task | Status |
 |---|---|---|---|
-| T40 | D | Gemini key in `.env`; `--list-models` confirms the model id; free-tier limits noted | ⬜ |
+| T40 | D | Gemini key in `.env`; model id `gemini-3-flash-preview` confirmed | ✅ |
 | T41 | B | Final router bundle (cascade, D-14), `router.predict`; same decisions as evaluation on 1,000 test questions. `router/bundle.py` is a stand-in to replace | ⬜ needs T61 |
-| T42 | D | `serve.py` running with Qwen (MLX) + Gemini on the M2; router decision p99 < 15 ms. Code exists | 🔶 never run with real models |
-| T43 | D | Web page in Safari and Chrome with real models. Code exists | 🔶 |
+| T42 | D | `serve.py` running with Qwen (MLX) + Gemini on the M2: p99 7.6 ms with the interim bundle; re-run with B's final bundle (T41) | 🔶 |
+| T43 | D | Web page with real models: both routes verified on the M2; check Safari too | 🔶 |
 | T44 | C | Replay mode: 200 test questions through the live router, matches offline (PR #17) | 🔶 merge |
 | T45 | A | Demo set (25 questions) checked against the final bundle (`scripts/check_demo_set.py`) | 🔶 draft; re-check with T41 |
 | T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | 🔶 code exists |
