@@ -215,9 +215,9 @@ def main() -> None:
                    "per_source": per_source(g, best[2], best[3])}
 
     args.out_json.parent.mkdir(parents=True, exist_ok=True)
-    args.out_json.write_text(json.dumps(rep, indent=2, default=float))
+    args.out_json.write_text(json.dumps(rep, indent=2, default=float), encoding="utf-8")
     args.out_md.parent.mkdir(parents=True, exist_ok=True)
-    args.out_md.write_text(to_markdown(rep))
+    args.out_md.write_text(to_markdown(rep), encoding="utf-8")
     print(f"wrote {args.out_md} and {args.out_json}")
 
 
