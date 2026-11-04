@@ -66,12 +66,17 @@ def main():
     print("Loading Track B data...")
     corpus = schema.read("artifacts/trackb/corpus.parquet", schema.CORPUS).set_index("qid")
     scores = schema.read("artifacts/trackb/scores_hard.parquet", schema.SCORES)
-    preds = schema.read("artifacts/trackb/preview_predictions.parquet", schema.PREDICTIONS)
+    preds_path = Path("artifacts/trackb/cascade_predictions.parquet")
+    if not preds_path.exists():
+        preds_path = Path("artifacts/trackb/preview_predictions.parquet")
+    preds = schema.read(preds_path, schema.PREDICTIONS)
     wide = scores.pivot(index="qid", columns="model", values="score")
     table = PriceTable.load()
     m1 = pair_costs(table, scores, small="qwen3.5-4b", large="gpt-4-1106-preview")
 
-    f = preds[preds["router"] == "cascade_conf"].copy()
+    router_name = "cascade_3sample" if "cascade_3sample" in preds["router"].values else "cascade_conf"
+    print(f"Using router: {router_name} from {preds_path}")
+    f = preds[preds["router"] == router_name].copy()
     f = f.join(corpus[["split", "source"]], on="qid")
     f["s_S"] = wide.loc[f["qid"], "qwen3.5-4b"].to_numpy()
     f["s_L"] = wide.loc[f["qid"], "gpt-4-1106-preview"].to_numpy()

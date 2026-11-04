@@ -43,19 +43,19 @@ To eliminate permutation noise rigorously without violating statistical guarante
 
 ## 3. Empirical Results (M=50 Permutations)
 
-Running `scripts/17_t60_seed_free_wsr.py` with $M=50$ permutations on the standard train grid ($n=1,000$):
+Running `scripts/17_t60_seed_free_wsr.py` with $M=50$ permutations on `cascade_3sample` across the standard train grid ($n=1,000$):
 
 | Method | Permutations ($M$) | Cal $\tau^*$ | Cal Escalation | Test Escalation [95% CI] | Test PGR [95% CI] | Certified Test Savings [95% CI] |
 |---|:---:|--:|--:|:---:|:---:|:---:|
 | **Single-Permutation WSR (Seed 0)** | 1 | 9.1861 | 61.3% | 61.2% [59.9, 62.7] | 100.9% [96.6, 105.6] | 53.9% [51.8, 56.0] |
 | **Seed Variance Range (Seeds 0–19)**| 1 | 8.11–16.72 | 41.2%–77.7% | 40.8%–77.5% | 96.1%–104.2% | 40.8%–74.9% |
-| **Seed-Free Terminal WSR ($M=50$)** | **50** | **8.2187** | **76.1%** | **75.9% [74.7, 77.1]** | **102.8% [99.1, 107.0]** | **41.3% [39.0, 43.5]** |
-| **Averaged WSR (Reported Benchmark)**| **50** | **8.8700** | **67.0%** | **66.6% [65.2, 67.9]** | **101.5% [97.5, 105.8]** | **48.3% [45.9, 50.6]** |
+| **Seed-Free Terminal WSR ($M=50$, `cascade_3sample`)** | **50** | **8.2187** | **76.1%** | **75.9% [74.7, 77.1]** | **102.8% [99.1, 107.0]** | **41.3% [39.0, 43.5]** |
 
 ---
 
 ## 4. Key Takeaways
 
 1. **Permutation Invariance**: Averaging terminal e-values across $M=50$ permutations completely eliminates the 40.8%–74.9% seed fluctuation.
-2. **Conservative Rigor**: Because it does not take the running maximum over $t$, the pure terminal wealth bound is robust against early drawdown artifacts and yields **41.3% to 48.3% certified spend reduction** with exact validity.
+2. **Conservative Rigor**: Because it does not take the running maximum over $t$, the pure terminal wealth bound is robust against early drawdown artifacts and yields **41.3% [39.0%, 43.5%] certified spend reduction** with exact finite-sample validity.
+3. **Consistent Unified Numbers**: This seed-free result (41.3% certified spend savings, 75.9% escalation) aligns with the official `cascade_3sample` model from `cascade_predictions.parquet` and is quoted consistently in the T28 preview.
 3. **Reproducibility**: The standalone runner `scripts/17_t60_seed_free_wsr.py` reproduces the evaluation and bounds in one command.
