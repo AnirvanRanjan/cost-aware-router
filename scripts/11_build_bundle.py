@@ -26,10 +26,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from router import schema  # noqa: E402
 from router import threshold as th  # noqa: E402
-from router.bundle import F0F1Featurizer, RouterBundle  # noqa: E402
+from router.bundle import F0F1Featurizer, F0F2Featurizer, RouterBundle  # noqa: E402
 from router.costs import PriceTable  # noqa: E402
 from router.features import TfidfFeatureExtractor, heuristics  # noqa: E402
-from router.models import TwoHeadRouter  # noqa: E402
+from router.models import TwoHeadRouter, fuse_features  # noqa: E402
 
 HEADLINE = ("mmlu", "gsm8k", "arc-challenge", "winogrande")
 
@@ -38,6 +38,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--corpus", type=Path, default=Path("artifacts/routerbench/corpus.parquet"))
     ap.add_argument("--scores", type=Path, default=Path("artifacts/routerbench/scores.parquet"))
+    ap.add_argument("--features", type=Path, default=Path("artifacts/features/features.parquet"))
+    ap.add_argument("--featurizer", choices=("f0f2", "f0f1"), default="f0f2")
     ap.add_argument("--small", default="mistralai/mixtral-8x7b-chat")
     ap.add_argument("--large", default="gpt-4-1106-preview")
     ap.add_argument("--rule", choices=("v1", "v2"), default="v1")
@@ -65,13 +67,26 @@ def main() -> None:
     x0, _ = heuristics(texts)
     x0 = np.nan_to_num(np.asarray(x0, dtype=np.float64))
     mean, std = x0[tr].mean(0), x0[tr].std(0) + 1e-8
-    tfidf = TfidfFeatureExtractor(min_df=2, max_word_features=3000, max_char_features=3000)
-    tfidf.fit([t for t, m in zip(texts, tr) if m])
-    svd = TruncatedSVD(n_components=args.svd_dim, random_state=args.seed).fit(tfidf.transform([t for t, m in zip(texts, tr) if m]))
-    feat = F0F1Featurizer(mean, std, tfidf, svd)
-    X = feat.transform(texts)
 
-    router = TwoHeadRouter(name="bundle_f0f1", epochs=args.epochs, seed=args.seed)
+    if args.featurizer == "f0f2":
+        if not args.features.exists():
+            sys.exit(f"Features file {args.features} not found for f0f2 featurizer.")
+        f_df = schema.read(args.features, schema.FEATURES)
+        f2_map = dict(zip(f_df["qid"].astype(str), f_df["vector"]))
+        f2_arr = np.asarray([f2_map[str(q)] for q in c.index], dtype=np.float32)
+        x0_norm = ((x0 - mean) / std).astype(np.float32)
+        X = np.concatenate([f2_arr, x0_norm], axis=1).astype(np.float32)
+        feat = F0F2Featurizer(mean=mean, std=std)
+    else:
+        tfidf = TfidfFeatureExtractor(min_df=2, max_word_features=3000, max_char_features=3000)
+        tfidf.fit([t for t, m in zip(texts, tr) if m])
+        svd = TruncatedSVD(n_components=args.svd_dim, random_state=args.seed).fit(
+            tfidf.transform([t for t, m in zip(texts, tr) if m])
+        )
+        feat = F0F1Featurizer(mean, std, tfidf, svd)
+        X = feat.transform(texts)
+
+    router = TwoHeadRouter(name=f"bundle_{args.featurizer}", epochs=args.epochs, seed=args.seed)
     router.fit(X[tr], s_S[tr], s_L[tr], group_ids=c["group_id"].to_numpy()[tr])
     router.calibrate(X[ca], s_S[ca], s_L[ca])
 

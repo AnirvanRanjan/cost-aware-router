@@ -29,7 +29,8 @@ def main() -> None:
     ap.add_argument("--large", default="gemini-3-flash")
     ap.add_argument("--price-as", default=None, help="price the frontier like this models.yaml model "
                                                      "(default: the Rev A reference, claude-sonnet-4.6)")
-    ap.add_argument("--cache", type=Path, default=Path("artifacts/cache/demo.sqlite"))
+    ap.add_argument("--cache", type=Path, default=None,
+                    help="answer cache (default: artifacts/cache/demo.sqlite, or demo_fake.sqlite with --fake)")
     ap.add_argument("--max-tokens", type=int, default=512)
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--fake", action="store_true")
@@ -50,7 +51,10 @@ def main() -> None:
         bundle = RouterBundle.load(args.bundle)
         small = load_client(args.small)
         large = FakeClient(args.large) if args.offline else load_client(args.large)
-    demo = Demo(bundle, small, large, GenerationCache(args.cache), params=GenParams(max_tokens=args.max_tokens),
+    # --fake must never share a cache with the real run: the clients have the same names, so the real
+    # server would otherwise serve the fake's canned answers (bug reported in T42 on the M2).
+    cache_path = args.cache or Path("artifacts/cache/demo_fake.sqlite" if args.fake else "artifacts/cache/demo.sqlite")
+    demo = Demo(bundle, small, large, GenerationCache(cache_path), params=GenParams(max_tokens=args.max_tokens),
                 offline=args.offline, frontier_price=(ref.input, ref.output))
     print(f"router tau*={bundle.tau:.3f} rule {bundle.rule} | local {small.name} | frontier {large.name}"
           f"{' (offline)' if args.offline else ''} | priced as {ref.name}")

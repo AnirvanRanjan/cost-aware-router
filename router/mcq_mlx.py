@@ -83,47 +83,54 @@ class MLXOptionScorer:
         # 1. Try MLX array if mlx is available
         try:
             import mlx.core as mx
-            if not isinstance(input_ids, mx.array):
-                arr = mx.array([input_ids])
-            else:
-                arr = input_ids
-            out = self.model(arr)
-            # Evaluate MLX array if needed
-            if hasattr(mx, "eval"):
-                mx.eval(out)
-            if hasattr(out, "ndim") and out.ndim == 3:
-                logits_last = out[0, -1]
-            elif hasattr(out, "ndim") and out.ndim == 2:
-                logits_last = out[-1]
-            else:
-                logits_last = out
-            # MLX models return bfloat16, which NumPy cannot read; cast inside MLX first.
-            logits_last = logits_last.astype(mx.float32)
-            mx.eval(logits_last)
-            return np.array(logits_last, dtype=np.float64)
-        except (ImportError, Exception):
-            pass
+        except ImportError:
+            mx = None
+
+        if mx is not None:
+            try:
+                arr = input_ids if isinstance(input_ids, mx.array) else mx.array([input_ids])
+                out = self.model(arr)
+            except (TypeError, ValueError):
+                out = None
+
+            if out is not None and isinstance(out, mx.array):
+                if hasattr(mx, "eval"):
+                    mx.eval(out)
+                if out.ndim == 3:
+                    logits_last = out[0, -1]
+                elif out.ndim == 2:
+                    logits_last = out[-1]
+                else:
+                    logits_last = out
+                # MLX models return bfloat16, which NumPy cannot read; cast inside MLX first.
+                logits_last = logits_last.astype(mx.float32)
+                mx.eval(logits_last)
+                return np.array(logits_last, dtype=np.float64)
 
         # 2. Try PyTorch tensor if torch is available
         try:
             import torch
-            if isinstance(input_ids, list):
-                t = torch.tensor([input_ids])
-            else:
-                t = input_ids
-            out = self.model(t)
-            if hasattr(out, "logits"):
-                out = out.logits
-            if hasattr(out, "detach"):
-                out = out.detach().cpu().numpy()
-            out = np.asarray(out)
-            if out.ndim == 3:
-                return out[0, -1].astype(np.float64)
-            elif out.ndim == 2:
-                return out[-1].astype(np.float64)
-            return out.astype(np.float64)
-        except Exception:
-            pass
+        except ImportError:
+            torch = None
+
+        if torch is not None:
+            try:
+                t = input_ids if isinstance(input_ids, torch.Tensor) else torch.tensor([input_ids])
+                out = self.model(t)
+            except (TypeError, ValueError):
+                out = None
+
+            if out is not None and (isinstance(out, torch.Tensor) or hasattr(out, "logits")):
+                if hasattr(out, "logits"):
+                    out = out.logits
+                if hasattr(out, "detach"):
+                    out = out.detach().cpu().numpy()
+                out = np.asarray(out)
+                if out.ndim == 3:
+                    return out[0, -1].astype(np.float64)
+                elif out.ndim == 2:
+                    return out[-1].astype(np.float64)
+                return out.astype(np.float64)
 
         # 3. Fallback to generic callable or mock model
         inp = np.asarray([input_ids]) if isinstance(input_ids, list) else input_ids
