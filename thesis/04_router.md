@@ -247,7 +247,7 @@ This motivates the **Cascade Router Architecture** (`router.cascade`, Proposal D
    - Local consensus and confidence: agreement across $k$ sampled paths (self-consistency) or next-token option probability $\max P(\text{option})$ from `MLXOptionScorer`.
 3. If the small model exhibits high confidence and zero arithmetic slips, the answer is accepted; otherwise, the query escalates to $L$.
 
-Exploratory analysis (`scripts/12_cascade_explore.py`, `notes/cascade_explore.md`) demonstrates that adding a second opinion / self-consistency agreement signal reduces frontier calls from $96.2\%$ to **$79.0\%$**, boosting certified savings from $9.4\%$ to **$26.0\%$ [95% CI: 24.2%, 27.9%]** at $\text{PGR} = 97.9\%$. The implementation and evaluation of the cascade router are formalized in Chapter 5.
+Exploratory analysis (`scripts/12_cascade_explore.py`, `notes/cascade_explore.md`) demonstrates that adding a second opinion (agreement with a second small model, Yi-34B; not Qwen's self-consistency, which is measured on Track B in Chapter 5) reduces frontier calls from $96.2\%$ to **$79.0\%$**, boosting certified savings from $9.4\%$ to **$26.0\%$ [95% CI: 24.2%, 27.9%]** at $\text{PGR} = 97.9\%$. The implementation and evaluation of the cascade router are formalized in Chapter 5.
 
 ---
 
