@@ -167,7 +167,7 @@ We report results across all headline datasets on the frozen RouterBench benchma
 | Router Architecture | Selection Method | Bound | Certified? | PGR (Test) | M1 Cost Savings [95% CI] | M2 Savings |
 |---|---|:---:|:---:|:---:|:---:|:---:|
 | **Random Baseline** | Uniform sample | — | No | 95.0% | 3.9% | 3.8% |
-| **Oracle Baseline** | True gap ordering | — | Yes | 95.0% | 78.1% | 77.4% |
+| **Oracle Baseline** | True gap ordering | — | No (reference) | 95.0% | 78.1% | 77.4% |
 | **Heuristics (F0) + LogReg** | LTT on cal | WSR | Yes | 96.6% [95.3, 97.8] | 3.9% [3.4, 4.4] | 3.8% |
 | **Two-Head MLP (Rule v1)** | LTT on cal | WSR | Yes | 95.4% [94.0, 96.7] | 4.2% [3.7, 4.7] | 4.0% |
 | **Two-Head MLP (Rule v2)** | **LTT on cal** | **WSR** | **Yes** | **96.3% [95.2, 97.5]** | **9.4% [7.8, 10.9]** | **8.9%** |
@@ -175,12 +175,12 @@ We report results across all headline datasets on the frozen RouterBench benchma
 | Two-Head MLP (Rule v2) | Leaky on test | None | No | 95.0% | 14.3% (Uncertified upper bound) | 13.8% |
 | **Cascade (Answer + Agreement)** | **LTT on cal** | **WSR** | **Yes** | **97.9% [96.8, 98.9]** | **26.0% [24.2, 27.9]** | **24.8%** |
 
-> **Certification Caveat & Leakage Warning**: As noted in `notes/ablation_ladder.md`, the 14.3% savings figure is obtained by sweeping the threshold directly on test split rows (`Savings @ PGR .95`). This represents an uncertified theoretical upper bound with test-split leakage. The true, deployable, certified savings number is **9.4% [7.8, 10.9]** using WSR on calibration. Similarly, naive cal thresholding without bounds yields an overly optimistic 12.7% point estimate that does not guarantee error rate control on unseen data.
+> **Certification Caveat & Leakage Warning**: As noted in `notes/ablation_ladder.md`, the 14.3% savings figure is obtained by sweeping the threshold directly on test split rows (`Savings @ PGR .95`). This represents an uncertified theoretical upper bound with test-split leakage. The true, deployable, certified savings number is **9.4% [7.8, 10.9]** using WSR on calibration. Similarly, naive cal thresholding without bounds yields an overly optimistic 12.7% point estimate that does not guarantee error rate control on unseen data. Note also that the Oracle baseline is an empirical reference rather than a statistically certified router.
 
 ### 6.2 Key Findings & Model Comparisons:
-1. **Rule v2 Dominance**: Cost-normalized thresholding (Rule v2) more than doubles certified savings compared to quality-only thresholding (Rule v1) from 4.2% to 9.4%.
-2. **The Price of Certification**: Naive thresholding without statistical bounds claims 12.7% savings on cal, but drops below target on test. Statistical certification with WSR guarantees $\text{PGR} \ge 95\%$ while securing 9.4% net savings.
-3. **Cascade Architecture**: Inspecting small-model outputs prior to routing delivers **26.0% certified savings** on the development pair, demonstrating that generation confidence features substantially outperform prompt-only embeddings.
+1. **Rule v2 Dominance on Two-Head Representations**: Cost-normalized thresholding (Rule v2) more than doubles certified savings for the two-head router compared to quality-only thresholding (Rule v1) from 4.2% to 9.4%. However, this benefit requires granular per-query cost awareness; for simpler heuristic routers (F0 + LogReg), v2 actually reduces savings (3.9% $\to$ 1.3%) because crude quality estimates degrade under cost normalization.
+2. **The Price of Certification**: Naive thresholding without statistical bounds claims 12.7% savings on cal, but its confidence interval on test reaches below 95% PGR ([93.6%, 96.4%]). Statistical certification with WSR guarantees $\text{PGR} \ge 95\%$ while securing 9.4% net savings.
+3. **Cascade Architecture**: Inspecting small-model outputs prior to routing delivers **26.0% certified savings** on the development pair when incorporating agreement with a second opinion model (Yi-34B, per `notes/cascade_explore.md`), demonstrating that generation verification substantially outperforms prompt-only embeddings.
 4. **Candidate Small Models (Mixtral vs. Yi-34B Caveat)**: Our development and baseline results focus on `mistralai/mixtral-8x7b-chat` (accuracy 63.2%, headroom 23.0% vs. GPT-4), which aligns directly with RouteLLM benchmarks. RouterBench also includes `zero-one-ai/Yi-34B-Chat` (accuracy 66.3%, headroom 20.0%), which offers a tighter gap; however, as decided in D-05/D-08, Yi-34B is treated as an optional secondary comparison pair for headroom sweeps rather than the primary deployment candidate.
 
 ---

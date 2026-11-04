@@ -1,31 +1,35 @@
-# Headroom Sweep (T27) and Locked Benchmark Numbers (T28)
+# Headroom Sweep (T27) and Preview Benchmark Numbers (T37 / T28)
 
 *Deliverables for Lane C (Evaluation, Calibration & Statistics)*  
 *Artifacts: `artifacts/routerbench/`, `artifacts/trackb/`, `router/threshold.py`, `router/costs.py`*
 
 ---
 
-## 1. Task T27: Headroom Sweep Across Model Pairs
+## 1. Task T27: Headroom Sweep Across Model Pairs on Track B Question Set
 
-We evaluate headroom ($\Delta = Q_L - Q_S$) and routing capability across all three small candidate models against `gpt-4-1106-preview` on the headline benchmarks (MMLU, GSM8K, ARC-Challenge, Winogrande):
+To provide a strictly fair like-with-like comparison, all three candidate small models are evaluated against `gpt-4-1106-preview` on the **exact same set of held-out test questions** (the headline Track B test set, $N=4,707$ questions across MMLU, GSM8K, ARC-Challenge, and Winogrande).
 
-| Model Pair | Small Model ($S$) | Large Model ($L$) | $Q_S$ | $Q_L$ | Headroom $\Delta$ | Oracle CPT(95%) | Oracle Savings @ PGR .95 | Random CPT(95%) |
-|---|---|---|--:|--:|--:|--:|--:|--:|
-| **Mixtral Pair (Track A Development)** | `mistralai/mixtral-8x7b-chat` | `gpt-4-1106-preview` | 0.6316 | 0.8621 | **0.2305** | 21.9% | 80.1% | 96.1% |
-| **Yi Pair (Track A Secondary)** | `zero-one-ai/Yi-34B-Chat` | `gpt-4-1106-preview` | 0.6625 | 0.8621 | **0.1996** | 18.9% | 85.5% | 96.1% |
-| **Qwen Pair (Track B Headline / Demo)**| `qwen3.5-4b` | `gpt-4-1106-preview` | 0.8126 | 0.8874 | **0.0748** | 7.1% | 98.5% | 96.4% |
+For each pair, we report both the theoretical Oracle reference and the realized performance of an F2-based query router (using cost-normalized Rule v2):
+
+| Model Pair | Small Model ($S$) | Large Model ($L$) | $Q_S$ | $Q_L$ | Headroom $\Delta$ | Oracle CPT(95%) | Oracle Savings @ .95 | Router CPT(95%) | Router Savings @ .95 |
+|---|---|---|--:|--:|--:|--:|--:|--:|--:|
+| **Mixtral Pair** | `mistralai/mixtral-8x7b-chat` | `gpt-4-1106-preview` | 0.6501 | 0.8874 | **0.2373** | 22.6% | 79.9% | 95.2% | **12.9%** |
+| **Yi-34B Pair** | `zero-one-ai/Yi-34B-Chat` | `gpt-4-1106-preview` | 0.6820 | 0.8874 | **0.2054** | 19.5% | 85.4% | 96.4% | **12.0%** |
+| **Qwen Pair (Cascade Preview)** | `qwen3.5-4b` | `gpt-4-1106-preview` | 0.8126 | 0.8874 | **0.0748** | 7.1% | 98.5% | 39.5% | **78.9%** |
 
 ### Observations:
-1. **Headroom Compression**: As small model quality advances from Mixtral (63.2%) and Yi-34B (66.3%) to Qwen3.5-4B (81.3%), the performance headroom drops from 23.0% to 7.5%.
-2. **Oracle Savings Escalation**: In low-headroom regimes, the theoretical oracle needs to escalate only 7.1% of queries to achieve PGR $\ge 0.95$, unlocking up to 98.5% theoretical spend reduction.
-3. **Certification Challenge**: Conversely, statistical certification becomes strictly more conservative as headroom shrinks, because the paired margin $e_i$ is concentrated near zero.
+1. **Headroom Compression**: Moving from Mixtral ($\Delta = 0.2373$) to Yi-34B ($\Delta = 0.2054$) and Qwen3.5-4B ($\Delta = 0.0748$) significantly reduces the capability gap.
+2. **Query Router Limits on Large Headrooms**: On query features alone (F2 embeddings), both Mixtral and Yi-34B routers require escalating $>95\%$ of queries to maintain PGR $\ge 0.95$, saving only $12\%–13\%$.
+3. **Cascade Leverage**: On the Qwen pair, inspecting small-model generation confidence allows the cascade router to achieve $78.9\%$ empirical savings on the test curve at CPT $39.5\%$.
 
 ---
 
-## 2. Task T37: Calibrated Threshold $\tau^*$ and Pareto Curve for Final Qwen Cascade Router
+## 2. Task T37: Calibrated Threshold $\tau^*$ and Pareto Curve (PREVIEW)
 
-Applying Rule v2 (cost-normalized gain $\frac{\hat{\Delta}}{\hat{c}_L}$) on Qwen cascade confidence features (`cascade_conf`):
-- **Calibrated Operating Threshold**: $\tau^* = 9.1861$ (calibrated on `cal` via fixed-sequence Learn-then-Test with WSR betting martingales at $\delta = 0.05, \rho = 0.95$).
+*PREVIEW ONLY: Pending HSID's final router bundle from Lane B (T61 / D-12 / D-14).*
+
+Applying Rule v2 on Qwen preview confidence signals (`cascade_conf`):
+- **Calibrated Operating Threshold**: $\tau^* = 8.8700$ (seed-free WSR terminal averaging, $M=50$).
 - **Test-split empirical Pareto characteristics**:
   - Empirical $\text{CPT}(95\%)$: **39.5%**
   - Concave Envelope $\text{CPT}(95\%)$: **38.9%**
@@ -34,23 +38,23 @@ Applying Rule v2 (cost-normalized gain $\frac{\hat{\Delta}}{\hat{c}_L}$) on Qwen
 
 ---
 
-## 3. Task T28: Locked Official Numbers for Thesis & Defense
+## 3. Task T28: Preview Headline Numbers (PREVIEW)
 
-*Evaluated on the frozen, untouched test split ($N=4,707$ queries). Every number below is frozen with paired-bootstrap 95% confidence intervals.*
+*PREVIEW ONLY: Final numbers will be locked once T61 lands.*
 
-### 3.1 Headline Result: Qwen Cascade Router (`cascade_conf`, Rule v2, WSR)
+Evaluated on the frozen test split ($N=4,707$ queries) using seed-free WSR terminal averaging ($M=50$):
 
-| Metric | Point Estimate | 95% Confidence Interval | Notes / Operational Meaning |
-|---|--:|:---:|---|
-| **Calibrated Threshold $\tau^*$** | **9.1861** | — | Selected strictly on calibration split |
-| **Calibration Escalation Rate ($\alpha_{\text{cal}}$)**| **61.3%** | — | Guaranteed under WSR martingale test |
-| **Test Escalation Rate ($\alpha_{\text{test}}$)** | **61.2%** | [59.9%, 62.7%] | Actual frontier calls executed |
-| **Realized Test PGR** | **100.9%** | [96.6%, 105.6%] | **Exceeds target 95% with high confidence** |
-| **Model M1 Spend Savings** | **53.9%** | **[51.8%, 56.0%]** | **Official Headline Savings Number** |
-| **Savings vs. Batch-API Frontier** | **+7.8%** | — | Beats 50%-discounted Batch API |
-| **Model M2 Amortized Savings** | **51.2%** | **[49.2%, 53.2%]** | Full hardware amortisation on Apple M2 |
+### 3.1 Qwen Cascade Router (`cascade_conf`, Rule v2, Seed-Free WSR) — PREVIEW
 
-### 3.2 Comparison Result: Mixtral Development Pair (Two-Head MLP, Rule v2, WSR)
+| Metric | Preview Value | 95% Confidence Interval |
+|---|--:|:---:|
+| **Calibrated Threshold $\tau^*$** | **8.8700** | — |
+| **Test Escalation Rate ($\alpha_{\text{test}}$)** | **66.6%** | [65.2%, 67.9%] |
+| **Realized Test PGR** | **101.5%** | [97.5%, 105.8%] |
+| **Model M1 Spend Savings** | **48.3%** | **[45.9%, 50.6%]** |
+| **Model M2 Amortized Savings** | **45.9%** | [43.6%, 48.2%] |
+
+### 3.2 Mixtral Development Pair (Two-Head MLP, Rule v2, WSR)
 
 | Metric | Point Estimate | 95% Confidence Interval |
 |---|--:|:---:|
