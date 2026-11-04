@@ -300,6 +300,16 @@ Evaluated on the **untouched test split** ($N={test_mask.sum():,}$ queries, Larg
 3. **Pareto Tradeoff Curves**:
 
 ![Ablation Pareto Curves]({args.out_plot.name})
+
+## 4. Which savings number is official (lane C, T22-T23)
+
+> **The `Savings @ PGR .95` column above is an upper bound, not a guarantee.** It is computed by
+> picking the threshold that reaches PGR 0.95 *on the test split itself* (threshold leakage,
+> DESIGN.md §5.2), and carries no guarantee on new queries. The official number is the
+> Learn-then-Test-certified one in `notes/threshold_report.md` (tau* frozen on cal by the WSR
+> bound): e.g. **9.4% [7.8, 10.9] certified savings** for the two-head MLP with rule v2, vs the
+> test-picked 14.3% above. Use this table to compare routers; cite
+> `notes/threshold_report.md` when quoting savings.
 """
 
     args.out_md.parent.mkdir(parents=True, exist_ok=True)
