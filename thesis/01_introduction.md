@@ -1,8 +1,8 @@
 # Chapter 1 — Introduction
 
-> **DRAFT for Anirvan Ranjan (task T54).** Numbers marked **[TBD]** wait for the Qwen results (Track B)
-> and the locked test-split numbers (T28). Rewrite in your own voice and check UPES's rules on
-> declaring AI assistance.
+> **DRAFT for Anirvan Ranjan (task T54).** Qwen numbers are the T28 **preview**
+> (`notes/t27_t28_locked_numbers.md`, `notes/t60_certification_report.md`); replace them with the locked
+> numbers when T28 closes. Rewrite in your own voice and check UPES's rules on declaring AI assistance.
 
 ## 1.1 The problem
 
@@ -11,7 +11,9 @@ At 2026 list prices a model such as Claude Sonnet 4.6 charges $3 per million inp
 million output tokens; a 4-billion-parameter open model such as Qwen3.5-4B runs on a 16 GB laptop for
 the price of electricity. Yet most questions a user asks do not need the frontier model: on the
 benchmarks we study, a 47-billion-parameter open model (Mixtral-8x7B) already answers 55–83% of
-questions correctly, depending on the dataset, against 81–96% for GPT-4 (Chapter 3).
+questions correctly, depending on the dataset, against 81–96% for GPT-4 (Chapter 3). The 4-billion-
+parameter model we run locally, Qwen3.5-4B, does better still: 69–92% against GPT-4's 82–97% on the
+same questions (`notes/trackb_results.md`).
 
 A **router** exploits this. For each incoming query it predicts whether the small model will be good
 enough, answers locally when it will, and calls the frontier model only when it will not. If the
@@ -70,11 +72,28 @@ the frontier arm, so no API budget is needed. Our pipeline:
 3. **What the router can and cannot see.** Query-only routers, from heuristics to sentence embeddings,
    recover 4–9% savings at a guaranteed PGR of 0.95 on the Mixtral pair. Adding the small model's
    agreement with a second opinion raises this to 26% (Chapter 5), consistent with cascade work
-   [@yue2024cascades]. For the local model this becomes Qwen's agreement with itself **[TBD]**.
-4. **A router that runs on a laptop**, with costs reported both as API spend and as the laptop's own
-   running cost, and a live demonstration **[TBD: headline numbers for Qwen3.5-4B vs GPT-4]**.
+   [@yue2024cascades]. For the local model this becomes Qwen's agreement with itself: on the
+   Qwen3.5-4B / GPT-4 pair a question-only router certifies 0.5–2.5% savings, while a cascade router
+   that reads Qwen's own answer (agreement of three samples, option probability) certifies
+   **41.3% [39.0, 43.5]** (Chapter 5).
+4. **A router that runs on a laptop**, with costs reported both as API spend (cost model M1) and as
+   the laptop's own running cost (M2), and a live demonstration on a MacBook: Qwen3.5-4B in 4-bit MLX
+   answers locally, Gemini 3 Flash stands in for the frontier model, and the routing decision takes
+   7.6 ms at the 99th percentile (Chapter 6). The 4-bit Mac model shows no measurable accuracy gap from
+   the bf16 model the router was trained on (`notes/m2_checks.md`).
 
-## 1.5 Organisation
+## 1.5 Results in brief
+
+On the Qwen3.5-4B / GPT-4 pair, with the threshold fixed on the calibration split before the test split
+was opened, the cascade router keeps the frontier model's quality (test PGR 102.8% [99.1, 107.0]) while
+cutting API spend by **41.3% [39.0, 43.5]**, about 1.7× cheaper than always calling the frontier model;
+counting the laptop's own running cost (M2) the saving is 36.5%. The same router's test curve reaches 78.9%
+(4.7×) if the operating point is picked after seeing the test results, so the original 2–5× target is met
+only without a guarantee. The difference between the two numbers is the price of certifying the threshold
+in advance, and is discussed in Chapter 7. The demonstration uses a cheaper one-sample version of the
+cascade, which certifies 27.8% [25.9, 29.6] (`notes/trackb_cascade_report.md`).
+
+## 1.6 Organisation
 
 Chapter 2 reviews cascades, routers, routing benchmarks and distribution-free risk control.
 Chapter 3 builds the corpus. Chapter 4 describes the features and the router. Chapter 5 covers the cost
@@ -82,4 +101,4 @@ model, threshold selection and results. Chapter 6 describes local inference and 
 system. Chapter 7 discusses limitations and future work, and Chapter 8 concludes.
 
 **Team contributions** (fill in): Data and corpus — Anirvan Ranjan; features and router — HSID007;
-evaluation and statistics — [C]; systems and demo — kartiken07.
+evaluation and statistics — Sarthak Jakhmola; systems and demo — kartiken07.

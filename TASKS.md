@@ -32,11 +32,11 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 
 | Who | Do this now | Why it can't wait |
 |---|---|---|
-| **All** | Read `notes/trackb_results.md`; reply yes/no on **D-14** (demo uses one Qwen answer + its confidence). Review PR #18. | D-14 decides how the demo router is built |
-| **A** · Ani | Merge #17 once its chapter is fixed, and #18. Rewrite chapters 1–3 in your own words; add the Track B numbers to ch. 1. Re-run T45 when B's bundle exists. | Everyone builds on `main` |
-| **B** · HSID | **T36 + T61**: the official cascade router for the Qwen pair, then **T41** the demo bundle. Then T51 (chapter). | The demo, T37 and T28 all wait on it |
-| **C** · Sarthak | Fix `chapter_C_draft.md` (see PR #17 review) so #17 can merge. Then **T60** (tighter certification) and **T37** on the Qwen pair. | The headline number is his |
-| **D** · Kartiken | **T40** (Gemini key), **T59** (4-bit Mac vs GPU labels, 200 questions), **T42/T43** first real demo run on the M2. Runbook: `notes/runbook_trackb.md`. | The demo is the one thing only the M2 can do |
+| **All** | Kartiken: reply yes/no on **D-14** (B and C said yes). Everyone: read ch. 1, 7, 8 for anything wrong about your lane. | D-14 decides how the demo router is built |
+| **A** · Ani | #17 merged ✅; Qwen numbers in ch. 1 ✅; ch. 7–8 drafted ✅. Rewrite ch. 1–3, 7–8 in your own words; branch protection (T06); re-run T45 when B's cascade bundle exists. | Everyone builds on `main` |
+| **B** · HSID | Upload `cascade_predictions.parquet` (+ `.json`) to release `trackb-6265adf7ffa4a602`. Then **T41**: a cascade option in `11_build_bundle.py` for `cascade_1sample` (D-14), with Kartiken on `serve.py`. | The demo and T45/T46/T48 wait on it |
+| **C** · Sarthak | #17 merged ✅. Renumber `scripts/13_loso_mmlu.py` → `18_` (two scripts are numbered 13). Move `chapter_C_draft.md` to `thesis/05_results.md` with the seed-free 41.3% as the headline. | The headline number is his |
+| **D** · Kartiken | Re-measure Qwen tok/s with the `mlx_lm.generate` CLI (8.4 vs 28.5: decides cost model M2 and ch. 7 §7.5). D-14 vote. With HSID: `serve.py` generates Qwen's answer first, then routes on its confidence (`router/cascade.py`). | The demo is the one thing only the M2 can do |
 
 ---
 
@@ -69,9 +69,9 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T23 | C | Learn-then-Test τ\* on cal only | ✅ |
 | T24 | C | Cost model M2 + Batch-API baseline | ✅ |
 | T25 | C | `plot_pareto.py` panels A–D | ✅ |
-| T26 | C | Leave-one-subject-out on MMLU, like-for-like (PR #17) | 🔶 merge after the chapter fix |
-| T27 | C | Headroom sweep: savings vs gap across Mixtral, Yi-34B and Qwen | ⬜ |
-| T28 | C | **Lock the numbers**: Qwen pair headline, Mixtral pair comparison, CIs, test once | ⬜ needs T37 |
+| T26 | C | Leave-one-subject-out on MMLU, like-for-like (PR #17) | ✅ merged |
+| T27 | C | Headroom sweep: savings vs gap across Mixtral, Yi-34B and Qwen (`notes/t27_t28_locked_numbers.md`) | ✅ |
+| T28 | C | **Lock the numbers**: Qwen pair headline, Mixtral pair comparison, CIs, test once | 🔶 preview 41.3% [39.0, 43.5]; lock once predictions are in the release |
 
 ## Track B · The Qwen pair (headline result)
 
@@ -83,21 +83,21 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T33 | D | Qwen on GSM8K — **done on the H100 instead** (7,450 × 3 samples, D-13) | ✅ |
 | T34 | D | Qwen on MMLU / ARC / Winogrande — **done on the H100** (16,130 questions) | ✅ |
 | T35 | A | Track B scores aligned with GPT-4; release `trackb-6265adf7ffa4a602` | ✅ |
-| T36 | B | Router for the Qwen pair: retrain the small-model head on Qwen's labels; calibrate on cal | ⬜ |
-| T37 | C | τ\* for the Qwen pair (Learn-then-Test) and its Pareto curve, for the final router | ⬜ needs T36/T61 |
+| T36 | B | Router for the Qwen pair: retrain the small-model head on Qwen's labels; calibrate on cal (`notes/qwen_query_report.md`) | ✅ |
+| T37 | C | τ\* for the Qwen pair (Learn-then-Test) and its Pareto curve, for the final router | 🔶 preview τ\* = 8.22 on `cascade_3sample` |
 | **T59** | D | **4-bit vs bf16** on 200 test questions: no measurable gap (GSM8K −2, MMLU +3 points, ±7) — `notes/m2_checks.md` | ✅ |
-| **T60** | C | **Tighter certification**: the WSR bound certifies 67% frontier calls where the test curve needs ~40%. Try per-dataset τ\*, a coarser grid, and report how much each recovers (cal only!) | ⬜ new |
-| **T61** | B | **Cascade router (D-12, D-14)**: official version of `scripts/16_trackb_preview.py`. Two variants: k = 3 (agreement + log-prob, research table) and 1 answer + confidence (demo). Regularise or reduce F2 before combining (it hurt in the preview) | ⬜ new |
+| **T60** | C | **Tighter certification**: seed-free WSR (mean terminal e-value over 50 orderings) — `notes/t60_certification_report.md` | ✅ |
+| **T61** | B | **Cascade router (D-12, D-14)**: official version of `scripts/16_trackb_preview.py`. Two variants: k = 3 (agreement + log-prob, research table) and 1 answer + confidence (demo). Regularise or reduce F2 before combining (it hurt in the preview). `notes/trackb_cascade_report.md` | ✅ (predictions file still to upload) |
 
 ## Demo · The router live on a Mac
 
 | ID | Owner | Task | Status |
 |---|---|---|---|
 | T40 | D | Gemini key in `.env`; model id `gemini-3-flash-preview` confirmed | ✅ |
-| T41 | B | Final router bundle (cascade, D-14), `router.predict`; same decisions as evaluation on 1,000 test questions. `router/bundle.py` is a stand-in to replace | ⬜ needs T61 |
+| T41 | B | Final router bundle (cascade, D-14), `router.predict`; same decisions as evaluation on 1,000 test questions. `router/bundle.py` is a stand-in to replace | ⬜ unblocked: next |
 | T42 | D | `serve.py` running with Qwen (MLX) + Gemini on the M2: p99 7.6 ms with the interim bundle; re-run with B's final bundle (T41) | 🔶 |
 | T43 | D | Web page with real models: both routes verified on the M2; check Safari too | 🔶 |
-| T44 | C | Replay mode: 200 test questions through the live router, matches offline (PR #17) | 🔶 merge |
+| T44 | C | Replay mode: 200 test questions through the live router, matches offline (PR #17) | ✅ merged; re-run with T41 |
 | T45 | A | Demo set (25 questions) checked against the final bundle (`scripts/check_demo_set.py`) | 🔶 draft; re-check with T41 |
 | T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | 🔶 code exists |
 | T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | ⬜ |
@@ -112,7 +112,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T51 | B | Chapter 4, Features, router, ablation, cascade | ⬜ |
 | T52 | C | Chapter 5, Cost model, thresholds, guarantees, results (`notes/chapter_C_draft.md`) | 🔶 draft needs fixes |
 | T53 | D | Chapter 6, Local inference, the GPU run, serving, demo performance | ⬜ |
-| T54 | A | Ch. 1 intro + ch. 2 related work ✅ drafts; ch. 7–8 discussion and conclusion; merge all chapters | 🔶 |
+| T54 | A | Ch. 1, 2, 7, 8 drafts ✅ (ch. 1 has the Qwen preview numbers); own wording; merge all chapters | 🔶 |
 | T55 | D | Reproducibility: one command per figure, tested on a fresh clone | ⬜ |
 | T56 | All | Slides | ⬜ |
 | T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | ⬜ |
@@ -123,10 +123,10 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 ## Order of work from here
 
 ```
-Now          T36/T61 (B) · T26/T44 merge, T60 (C) · T40, T59 (D) · ch. 1–3 polish (A)
+Now          T41 + serve.py cascade (B, D) · predictions to release (B) · T28 lock (C) · tok/s (D) · own wording (A)
 Next 1–2 wk  T37 → T41 → T42/T43 on the M2 → T45 re-check → T46
 Then         T27, T28 (numbers locked) · T47 · chapters 4–6
 Last         T48 video · T49 dry runs · T56 slides · T57 viva prep · T54 merge
 ```
 
-**Critical path to the demo:** T61 (B) → T37 (C) → T41 (B) → T42/T43 on the M2 (D) → T45 (A) → T46 → T48.
+**Critical path to the demo:** T61 ✅ → T41 + `serve.py` cascade (B, D) → T42/T43 on the M2 (D) → T45 (A) → T46 → T48.
