@@ -180,3 +180,12 @@ def test_rejects_bad_input():
         th.sweep([1, 2], [0], [1, 1])
     with pytest.raises(ValueError):
         th.select_tau([1.0], [0.0], [1.0], method="magic")
+
+def test_hoeffding_lcb_scalar_stays_scalar():
+    """A scalar mean must return a scalar bound (it used to return a 0-d array)."""
+    from router.threshold import hoeffding_lcb
+    out = hoeffding_lcb(0.9, 1000)
+    assert isinstance(out, float)
+    assert hoeffding_lcb(0.9, 10000) > hoeffding_lcb(0.9, 1000)    # more data -> tighter bound
+    arr = hoeffding_lcb(np.array([0.9, 0.9]), 1000)
+    assert arr.shape == (2,)
