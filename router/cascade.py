@@ -109,9 +109,21 @@ def extract_single_answer_features(
     k_samples: Sequence[str] | None = None,
     option_probs: dict[str, float] | None = None,
     p_chosen: float | None = None,
+    mean_logprob: float | None = None,
 ) -> list[float]:
     """Extract answer-time features for a single query and response."""
-    text = " ".join(parse_turns(response)) if response is not None else ""
+    if hasattr(response, "text"):
+        resp_text = response.text
+        if mean_logprob is None and getattr(response, "mean_logprob", None) is not None:
+            mean_logprob = response.mean_logprob
+    elif isinstance(response, dict):
+        resp_text = response.get("text", "")
+        if mean_logprob is None and "mean_logprob" in response:
+            mean_logprob = response.get("mean_logprob")
+    else:
+        resp_text = response
+
+    text = " ".join(parse_turns(resp_text)) if resp_text is not None else ""
     text2 = " ".join(parse_turns(second_response)) if second_response is not None else ""
 
     length_feat = float(np.log1p(len(text)))
@@ -174,13 +186,18 @@ def extract_single_answer_features(
     # Source dataset one-hot
     src_onehot = [float(source == s) for s in HEADLINE_SOURCES]
 
-    # MCQ probability confidence
-    if p_chosen is not None:
+    # Confidence signal: MCQ probability, explicit p_chosen, or mean token logprob
+    has_p = p_chosen is not None and not np.isnan(p_chosen)
+    has_mlp = mean_logprob is not None and not np.isnan(mean_logprob)
+
+    if has_p:
         p_c = float(p_chosen)
     elif option_probs:
         p_c = float(max(option_probs.values()))
+    elif has_mlp:
+        p_c = float(np.clip(np.exp(float(mean_logprob)), 0.0, 1.0))
     else:
-        p_c = 0.5  # Neutral
+        p_c = 0.5  # Neutral default
 
     if option_probs and len(option_probs) >= 2:
         sorted_probs = sorted(option_probs.values(), reverse=True)
@@ -189,6 +206,9 @@ def extract_single_answer_features(
         probs_arr = np.clip(probs_arr, 1e-12, 1.0)
         probs_arr = probs_arr / probs_arr.sum()
         entropy_val = float(-np.sum(probs_arr * np.log(probs_arr)))
+    elif has_mlp:
+        margin_val = float(mean_logprob)
+        entropy_val = float(-mean_logprob)
     else:
         margin_val = float(p_c - (1.0 - p_c) / 3.0) if p_c > 0.25 else 0.0
         entropy_val = 1.0
@@ -220,6 +240,7 @@ def extract_cascade_features(
     k_samples_list: Sequence[Sequence[str]] | None = None,
     option_probs_list: Sequence[dict[str, float]] | None = None,
     p_chosen_list: Sequence[float] | None = None,
+    mean_logprobs_list: Sequence[float | None] | None = None,
 ) -> np.ndarray:
     """Extract matrix of answer-time and confidence features across multiple queries."""
     n = len(prompts)
@@ -232,6 +253,7 @@ def extract_cascade_features(
         k_samps = k_samples_list[i] if k_samples_list is not None else None
         opt_probs = option_probs_list[i] if option_probs_list is not None else None
         p_ch = p_chosen_list[i] if p_chosen_list is not None else None
+        mlp = mean_logprobs_list[i] if mean_logprobs_list is not None else None
 
         feats = extract_single_answer_features(
             prompt=prompt,
@@ -241,6 +263,7 @@ def extract_cascade_features(
             k_samples=k_samps,
             option_probs=opt_probs,
             p_chosen=p_ch,
+            mean_logprob=mlp,
         )
         rows.append(feats)
     return np.asarray(rows, dtype=np.float32)

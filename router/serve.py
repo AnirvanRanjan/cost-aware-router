@@ -75,48 +75,125 @@ class Demo:
         return (self.frontier_price[0] * approx_tokens(prompt) + self.frontier_price[1] * approx_tokens(answer)) / 1e6
 
     def health(self) -> dict:
-        return {"small": self.small.name, "large": self.large.name, "tau": self.bundle.tau, "rule": self.bundle.rule,
-                "offline": self.offline, "bundle": {k: v for k, v in self.bundle.meta.items() if k != "cal"}}
+        return {
+            "small": self.small.name,
+            "large": self.large.name,
+            "tau": self.bundle.tau,
+            "rule": self.bundle.rule,
+            "is_cascade": getattr(self.bundle, "is_cascade", False),
+            "offline": self.offline,
+            "bundle": {k: v for k, v in self.bundle.meta.items() if k != "cal"},
+        }
 
     def route(self, query: str) -> dict:
-        d = self.bundle.decide(query)
+        if getattr(self.bundle, "is_cascade", False):
+            prompt = build_prompt(None, query)
+            key = cache_key(self.small.name, prompt, self.params, 0)
+            with self.lock:
+                hit = self.cache.get(key)
+                if hit is not None:
+                    gen_s = hit
+                else:
+                    if hasattr(self.small, "generate_one"):
+                        gen_s = self.small.generate_one(prompt, self.params)
+                    else:
+                        gen_s = self.small.generate_batch([prompt], self.params, [0])[0]
+                    if gen_s.error is None and gen_s.text is not None and not self.offline:
+                        self.cache.put(key, self.small.name, 0, gen_s)
+            d = self.bundle.decide(query, response=gen_s, mean_logprob=gen_s.mean_logprob)
+        else:
+            d = self.bundle.decide(query)
         return d.as_dict()
 
     def stream(self, query: str, force: str | None = None):
         """Yield ("route", dict), then ("token", str)..., then ("done", dict). Errors: ("error", str)."""
-        d = self.bundle.decide(query)
-        route = force if force in ("local", "frontier") else d.route
-        client = self.large if route == "frontier" else self.small
-        info = {**d.as_dict(), "route": route, "forced": route != d.route, "model": client.name}
-        yield "route", info
-
         prompt = build_prompt(None, query)
-        key = cache_key(client.name, prompt, self.params, 0)
         t0 = time.perf_counter()
         first = None
         pieces: list[str] = []
-        with self.lock:
-            hit = self.cache.get(key)
-            if hit is not None:
-                for i in range(0, len(hit.text or ""), 24):            # replay the cached answer in chunks
-                    first = first or (time.perf_counter() - t0) * 1000
-                    pieces.append(hit.text[i:i + 24])
-                    yield "token", hit.text[i:i + 24]
-            elif self.offline and route == "frontier":
-                yield "error", "offline mode: this frontier answer is not cached"
-                return
+        hit = None
+
+        if getattr(self.bundle, "is_cascade", False):
+            # Decision D-14: Cascade router runs the local small model S first (free on local Mac)
+            if force == "frontier":
+                d = self.bundle.decide(query)
+                route = "frontier"
+                client = self.large
+                info = {**d.as_dict(), "route": route, "forced": True, "model": client.name}
+                yield "route", info
             else:
-                try:
-                    for piece in client.stream(prompt, self.params):
+                key_small = cache_key(self.small.name, prompt, self.params, 0)
+                with self.lock:
+                    hit_small = self.cache.get(key_small)
+                    if hit_small is not None:
+                        gen_s = hit_small
+                    else:
+                        if hasattr(self.small, "generate_one"):
+                            gen_s = self.small.generate_one(prompt, self.params)
+                        else:
+                            gen_s = self.small.generate_batch([prompt], self.params, [0])[0]
+                        if gen_s.error is None and gen_s.text is not None and not self.offline:
+                            self.cache.put(key_small, self.small.name, 0, gen_s)
+
+                d = self.bundle.decide(query, response=gen_s, mean_logprob=gen_s.mean_logprob)
+                route = force if force in ("local", "frontier") else d.route
+                client = self.large if route == "frontier" else self.small
+                info = {
+                    **d.as_dict(),
+                    "route": route,
+                    "forced": route != d.route,
+                    "model": client.name,
+                    "escalated": route == "frontier",
+                }
+                yield "route", info
+
+                if route == "local":
+                    # Keep local answer: yield decoded tokens directly
+                    answer_text = gen_s.text or ""
+                    for i in range(0, len(answer_text), 24):
                         first = first or (time.perf_counter() - t0) * 1000
-                        pieces.append(piece)
-                        yield "token", piece
-                except Exception as e:                                  # noqa: BLE001 - shown to the user
-                    yield "error", f"{type(e).__name__}: {e}"
+                        pieces.append(answer_text[i:i + 24])
+                        yield "token", answer_text[i:i + 24]
+                    hit = hit_small
+
+        else:
+            # Query-only routing: decide on prompt text before generating
+            d = self.bundle.decide(query)
+            route = force if force in ("local", "frontier") else d.route
+            client = self.large if route == "frontier" else self.small
+            info = {**d.as_dict(), "route": route, "forced": route != d.route, "model": client.name}
+            yield "route", info
+
+        # If frontier was chosen (or query-only local route not yet streamed)
+        if not (getattr(self.bundle, "is_cascade", False) and route == "local"):
+            key = cache_key(client.name, prompt, self.params, 0)
+            with self.lock:
+                hit = self.cache.get(key)
+                if hit is not None:
+                    for i in range(0, len(hit.text or ""), 24):
+                        first = first or (time.perf_counter() - t0) * 1000
+                        pieces.append(hit.text[i:i + 24])
+                        yield "token", hit.text[i:i + 24]
+                elif self.offline and route == "frontier":
+                    yield "error", "offline mode: this frontier answer is not cached"
                     return
-                text = "".join(pieces)
-                self.cache.put(key, client.name, 0, Generation(text, approx_tokens(prompt), approx_tokens(text),
-                                                               latency_ms=(time.perf_counter() - t0) * 1000))
+                else:
+                    try:
+                        for piece in client.stream(prompt, self.params):
+                            first = first or (time.perf_counter() - t0) * 1000
+                            pieces.append(piece)
+                            yield "token", piece
+                    except Exception as e:  # noqa: BLE001
+                        yield "error", f"{type(e).__name__}: {e}"
+                        return
+                    text = "".join(pieces)
+                    self.cache.put(
+                        key,
+                        client.name,
+                        0,
+                        Generation(text, approx_tokens(prompt), approx_tokens(text), latency_ms=(time.perf_counter() - t0) * 1000),
+                    )
+
         answer = "".join(pieces)
         cost = self.frontier_cost(prompt, answer) if route == "frontier" else 0.0
         t = self.totals
@@ -128,8 +205,13 @@ class Demo:
         t.router_ms.append(d.router_ms)
         if first is not None:
             t.first_token_ms.append(first)
-        yield "done", {"cost_usd": cost, "total_ms": (time.perf_counter() - t0) * 1000 + d.router_ms,
-                       "first_token_ms": first, "cached": hit is not None, "totals": t.as_dict()}
+        yield "done", {
+            "cost_usd": cost,
+            "total_ms": (time.perf_counter() - t0) * 1000 + d.router_ms,
+            "first_token_ms": first,
+            "cached": hit is not None,
+            "totals": t.as_dict(),
+        }
 
     def chat(self, query: str, force: str | None = None) -> dict:
         out: dict = {"answer": ""}

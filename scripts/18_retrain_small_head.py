@@ -2,10 +2,10 @@
 """Retrain only the small-model head of TwoHeadRouter on new small-model scores (T36 prep).
 
     # Test with Yi-34B scores standing in for Qwen:
-    python scripts/13_retrain_small_head.py --new-small zero-one-ai/Yi-34B-Chat
+    python scripts/18_retrain_small_head.py --new-small zero-one-ai/Yi-34B-Chat
 
     # When Track B arrives:
-    python scripts/13_retrain_small_head.py --scores artifacts/trackb/scores.parquet \\
+    python scripts/18_retrain_small_head.py --scores artifacts/trackb/scores.parquet \\
                                            --corpus artifacts/trackb/corpus.parquet \\
                                            --new-small qwen3.5-4b
 

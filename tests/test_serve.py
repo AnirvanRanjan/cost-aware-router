@@ -1,5 +1,6 @@
 """T42/T43/T46: demo server plumbing with stand-in router and models (no MLX, no network)."""
 import httpx
+import numpy as np
 import pytest
 
 from router import generate as gen
@@ -71,3 +72,64 @@ def test_openai_compat_streaming(monkeypatch):
     c = gen.OpenAICompatClient("api", "https://example.test/v1", "m", api_key_env="TEST_KEY",
                                transport=httpx.MockTransport(lambda r: httpx.Response(200, text=sse)))
     assert "".join(c.stream("hi", gen.GenParams())) == "Hello"
+
+
+class MockCascadeRouter:
+    """Mock cascade head for tests."""
+
+    def __init__(self, escalate: bool = False):
+        self.escalate = escalate
+
+    def predict_gap(self, X):
+        return np.full(len(X), 0.5 if self.escalate else -0.2)
+
+    def predict_proba(self, X, calibrated: bool = True):
+        delta = self.predict_gap(X)
+        return np.clip(0.5 - delta / 2.0, 0.0, 1.0), np.clip(0.5 + delta / 2.0, 0.0, 1.0)
+
+
+def _cascade_demo(escalate: bool = False, tau: float = 0.0, offline: bool = False, cache=None):
+    from router.bundle import CascadeFeaturizer
+
+    b = RouterBundle(CascadeFeaturizer(), MockCascadeRouter(escalate=escalate), tau=tau, _is_cascade=True)
+    return Demo(
+        b,
+        gen.FakeClient("qwen3.5-4b"),
+        gen.FakeClient("gemini-3-flash"),
+        cache if cache is not None else gen.GenerationCache(":memory:"),
+        offline=offline,
+    )
+
+
+def test_cascade_demo_keeps_local_when_confident():
+    d = _cascade_demo(escalate=False, tau=0.0)
+    r = d.chat("What is 2+2?")
+    assert r["route"]["route"] == "local"
+    assert r["route"]["model"] == "qwen3.5-4b"
+    assert r["done"]["cost_usd"] == 0.0
+    assert d.small.calls == 1
+    assert d.large.calls == 0
+    t = d.totals.as_dict()
+    assert t["queries"] == 1 and t["local"] == 1 and t["frontier"] == 0
+
+
+def test_cascade_demo_escalates_to_frontier_when_uncertain():
+    d = _cascade_demo(escalate=True, tau=0.0)
+    r = d.chat("Hard math question")
+    assert r["route"]["route"] == "frontier"
+    assert r["route"]["model"] == "gemini-3-flash"
+    assert r["route"]["escalated"] is True
+    assert r["done"]["cost_usd"] > 0
+    # Small model ran first, then escalated to large:
+    assert d.small.calls == 1
+    assert d.large.calls == 1
+    t = d.totals.as_dict()
+    assert t["queries"] == 1 and t["local"] == 0 and t["frontier"] == 1
+
+
+def test_cascade_demo_route_endpoint_generates_small_first():
+    d = _cascade_demo(escalate=False, tau=0.0)
+    res = d.route("Test route query")
+    assert res["route"] == "local"
+    assert d.small.calls == 1
+

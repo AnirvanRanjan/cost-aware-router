@@ -244,10 +244,10 @@ This motivates the **Cascade Router Architecture** (`router.cascade`, Proposal D
 2. The router inspects both the query features ($F_0, F_2$) and the small model's generated answer features:
    - Extracted answer letters and length;
    - Chain-of-thought verification (detecting explicit arithmetic errors $\text{slip}(a \text{ op } b \ne c)$ in reasoning steps);
-   - Local consensus and confidence: agreement across $k$ sampled paths (self-consistency) or next-token option probability $\max P(\text{option})$ from `MLXOptionScorer`.
+   - Local consensus and confidence: agreement across candidate completions (agreement with a second small model such as Yi-34B on Track A, or self-consistency across $k$ samples on Track B) and next-token option probability $\max P(\text{option})$ from `MLXOptionScorer`.
 3. If the small model exhibits high confidence and zero arithmetic slips, the answer is accepted; otherwise, the query escalates to $L$.
 
-Exploratory analysis (`scripts/12_cascade_explore.py`, `notes/cascade_explore.md`) demonstrates that adding a second opinion (agreement with a second small model, Yi-34B; not Qwen's self-consistency, which is measured on Track B in Chapter 5) reduces frontier calls from $96.2\%$ to **$79.0\%$**, boosting certified savings from $9.4\%$ to **$26.0\%$ [95% CI: 24.2%, 27.9%]** at $\text{PGR} = 97.9\%$. The implementation and evaluation of the cascade router are formalized in Chapter 5.
+Exploratory analysis (`scripts/12_cascade_explore.py`, `notes/cascade_explore.md`) on the Mixtral development pair demonstrates that adding a second opinion from Yi-34B (cross-model agreement between Mixtral-8x7B and Yi-34B-Chat, not self-consistency) reduces frontier calls from $96.2\%$ to **$79.0\%$**, boosting certified savings from $9.4\%$ to **$26.0\%$ [95% CI: 24.2%, 27.9%]** at $\text{PGR} = 97.9\%$. The full evaluation of the cascade router on the headline Qwen pair (Track B, Decision D-14), achieving $40.8\%$ certified savings with 3 answers and $27.8\%$ with 1 answer, is formalized in Chapter 5.
 
 ---
 
