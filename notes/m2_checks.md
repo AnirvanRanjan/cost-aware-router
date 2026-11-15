@@ -22,10 +22,21 @@ would tighten it if a viva question demands it.
 Batch 4 = 1.4× (11.8 vs 8.4 tok/s), batch 8 = 1.35× (`notes/batch_speedup.json`). `max_batch` stays 1
 because the batch path does not record `mean_logprob`, which the cascade router needs.
 
-**Open question:** the benchmark's 8.4 tok/s at batch 1 is far below the 28.5 tok/s in `configs/models.yaml`
-(measured with the `mlx_lm.generate` CLI in October). The benchmark includes prompt processing and Python
-overhead per call, but a 3× gap is more than that. Re-measure once with the CLI on the same machine; the
-number matters for the demo (a 110-token answer is ~4 s at 28.5 tok/s, ~13 s at 8.4) and for cost model M2.
+**Resolved 2026-11-15** (kartiken07, same M2, `mlx-lm` 0.32.2, low-power mode off; run on battery —
+results match or beat the October figure, so power source did not depress them):
+
+| Measurement | Result |
+|---|---|
+| `mlx_lm.generate` CLI, STEP1 protocol ("Solve: 17*23. Think step by step.", max-tokens 256, median of 3) | **29.1 tok/s** (28.1 / 29.1 / 29.3) |
+| CLI on the demo's own chat-templated 122-token prompt, generation only | **29.5 tok/s** median (28.7 / 29.5 / 30.0); prompt processing 165 tok/s |
+| `scripts/bench_batch.py --batches 1` rerun — same 16 GSM8K prompts, same code path | **23.4 tok/s** end-to-end (78.9 s vs 220.5 s on Nov 3; identical 1,848 out tokens) |
+
+The 28.5 in `configs/models.yaml` **holds**: steady-state generation on this machine is ~29 tok/s.
+The Nov 3 benchmark's 8.4 does not reproduce — the same script, prompts and model run 2.8× faster
+today, so the gap was that run's conditions (then-installed mlx-lm version or machine load), not the
+hardware. End-to-end through the demo path (prompt processing + Python overhead) is ~23 tok/s, so a
+110-token answer is ~5 s, not ~13 s. Cost model M2 keeps `tokens_per_sec: 28.5` for generation; use
+~23 tok/s only when pricing whole-call wall time.
 
 ## T40, T42 / T43
 
