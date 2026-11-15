@@ -35,8 +35,8 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | **All** | Kartiken: reply yes/no on **D-14** ✅ (voted yes 2026-11-15; D-14 is now Agreed). Everyone: read ch. 1, 7, 8 for anything wrong about your lane. | D-14 decides how the demo router is built |
 | **A** · Ani | #17 merged ✅; Qwen numbers in ch. 1 ✅; ch. 7–8 drafted ✅. Rewrite ch. 1–3, 7–8 in your own words; branch protection (T06); re-run T45 when B's cascade bundle exists. | Everyone builds on `main` |
 | **B** · HSID | `cascade_predictions.parquet` (+ `.json`) uploaded to release `trackb-6265adf7ffa4a602` ✅; **T41**: cascade bundle built (`cascade_1sample`, D-14) with 100% test agreement, and `serve.py` cascade integration ready for Kartiken ✅. | Unblocks demo (T42/T43) and T45/T46/T48 |
-| **C** · Sarthak | #17 merged ✅. Renumber `scripts/13_loso_mmlu.py` → `18_` (two scripts are numbered 13). Move `chapter_C_draft.md` to `thesis/05_results.md` with the seed-free 41.3% as the headline. | The headline number is his |
-| **D** · Kartiken | Re-measure Qwen tok/s with the `mlx_lm.generate` CLI ✅ (2026-11-15: median **29.1 tok/s**; the 8.4 does not reproduce — `notes/m2_checks.md`). D-14 vote ✅ (yes, 2026-11-15). With HSID: `serve.py` generates Qwen's answer first, then routes on its confidence (`router/cascade.py`). | The demo is the one thing only the M2 can do |
+| **C** · Sarthak | #17 merged ✅. Add the seed-free bound to `router/threshold.py` (`select_tau(method="wsr_avg")`) so the demo bundle can use it. Move `chapter_C_draft.md` to `thesis/05_results.md` with the seed-free 41.3% as the headline. | The headline number is his |
+| **D** · Kartiken | Re-measure Qwen tok/s with the `mlx_lm.generate` CLI ✅ (2026-11-15: median **29.1 tok/s**; the 8.4 does not reproduce — `notes/m2_checks.md`). D-14 vote ✅ (yes, 2026-11-15). **Next: T42/T43 with HSID's cascade bundle** (`python scripts/11_build_bundle.py --mode cascade`, then `serve_demo.py`): both routes, Safari, a "Qwen is answering…" status while the local answer is generated (the page is blank until then). Delete the old `artifacts/cache/demo.sqlite` first. Then T46, T47, T53. | The demo is the one thing only the M2 can do |
 
 ---
 
@@ -78,7 +78,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | ID | Owner | Task | Status |
 |---|---|---|---|
 | T30 | D | `generate.py`: MLX + OpenAI-compatible clients, cache, resumable | ✅ |
-| T31 | D | Batched decoding speed-up: M1 1.17×, M2 1.4× at batch 4 (`notes/m2_checks.md`); stays at batch 1 for log-probs. Re-check the M2's batch-1 speed (8.4 vs 28.5 tok/s) | ✅ |
+| T31 | D | Batched decoding speed-up: M1 1.17×, M2 1.4× at batch 4 (`notes/m2_checks.md`); stays at batch 1 for log-probs. Batch-1 speed re-checked: 29.1 tok/s (CLI), 23.4 end to end; the 8.4 did not reproduce | ✅ |
 | T32 | B | `mcq_logprob` scorer (bf16 fix applied) | ✅ |
 | T33 | D | Qwen on GSM8K — **done on the H100 instead** (7,450 × 3 samples, D-13) | ✅ |
 | T34 | D | Qwen on MMLU / ARC / Winogrande — **done on the H100** (16,130 questions) | ✅ |

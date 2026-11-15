@@ -58,8 +58,8 @@ The cascade has two costs that a question-only router does not.
 - **Latency on escalated queries.** Every query is answered by the local model first. When the router
   then escalates, the user waits for both models. At the certified threshold about 76% of headline test
   queries are escalated. For multiple choice the local step is a single forward pass, but a 110-token
-  GSM8K answer takes about 4 s at 28.5 tokens per second, or 13 s at the 8.4 tokens per second measured
-  by the batch benchmark (`notes/m2_checks.md`; the difference is still being re-measured).
+  GSM8K answer takes about 5 s on the M2 end to end (about 23 tokens per second including prompt
+  processing; 29 for generation alone, `notes/m2_checks.md`).
 - **Samples.** The three-sample router needs three local generations. The demonstration therefore uses a
   one-sample version (decision D-14), which certifies 27.8% [25.9, 29.6] instead of 40.8%
   (`notes/trackb_cascade_report.md`, single permutation seed). Self-agreement is the most useful signal,
@@ -96,9 +96,9 @@ Under cost model M1, local inference is free and the savings follow. Two compari
   interactively, which is the use case of this project; batch processing has hours of latency.
 - **The laptop's own cost.** Counting the Mac's purchase price, power and lifetime (M2), the certified
   saving falls from 41.3% to 36.5% (at the configured 28.5 tokens per second). The break-even speed against Gemini 3 Flash at list price is
-  12.1 tokens per second (Chapter 5). The October CLI measurement on the M2 (28.5 tokens per second) is
-  well above it; the November benchmark (8.4) is below it. Which one holds decides whether, against a
-  cheap frontier model, local generation saves money at all. Against Claude-Sonnet-class pricing, which
+  12.1 tokens per second (Chapter 5). The M2 generates at about 29 tokens per second, and about 23
+  end to end (`notes/m2_checks.md`; an earlier 8.4 did not reproduce), so local generation stays cheaper
+  even against this low-cost frontier model. Against Claude-Sonnet-class pricing, which
   we use as the reference, the break-even is a few tokens per second (`router/costs.py`), and local
   generation is cheaper at every speed we measured.
 
