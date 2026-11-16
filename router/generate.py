@@ -48,6 +48,12 @@ PROMPT_TEMPLATES = {
     "gsm8k": "{prompt}\n\nSolve the problem step by step, briefly: short plain-text steps, no LaTeX, "
              "no restating the question. Finish with a final line of the form 'The answer is N.' "
              "where N is a number.",
+    # Live demo (T45): keeps answers short and in the format the cascade router was trained on
+    # (mean log-probability of a long, verbose answer measures how predictable the prose is, not
+    # whether the answer is right), and keeps local answers under the token limit.
+    "demo": "{prompt}\n\nAnswer briefly. If it needs a calculation, use short plain-text steps, no LaTeX, "
+            "and finish with a final line of the form 'The answer is X.' Otherwise answer in one to "
+            "three sentences.",
     "default": "{prompt}",
 }
 

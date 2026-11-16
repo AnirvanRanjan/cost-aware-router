@@ -35,6 +35,7 @@ def main() -> None:
     ap.add_argument("--demo-set", type=Path, default=Path("configs/demo_set.yaml"))
     ap.add_argument("--small", default="qwen3.5-4b")
     ap.add_argument("--max-tokens", type=int, default=512, help="must match serve_demo.py")
+    ap.add_argument("--raw-prompt", action="store_true", help="send the query as typed (no 'answer briefly' template)")
     ap.add_argument("--cache", type=Path, default=None,
                     help="answer cache (default: artifacts/cache/demo.sqlite, or demo_fake.sqlite with --fake)")
     ap.add_argument("--fake", action="store_true", help="canned local answers (no MLX); for testing the script")
@@ -49,7 +50,8 @@ def main() -> None:
     small = FakeClient(args.small) if args.fake else (load_client(args.small) if bundle.is_cascade else None)
     cache_path = args.cache or Path("artifacts/cache/demo_fake.sqlite" if args.fake else "artifacts/cache/demo.sqlite")
     params = GenParams(max_tokens=args.max_tokens)
-    demo = Demo(bundle, small, FakeClient("frontier-not-called"), GenerationCache(cache_path), params=params)
+    demo = Demo(bundle, small, FakeClient("frontier-not-called"), GenerationCache(cache_path), params=params,
+                prompt_style=None if args.raw_prompt else "demo")
 
     kind = "cascade (Qwen answers first)" if bundle.is_cascade else "query-only"
     lines = [f"tau* = {bundle.tau:.3f}, rule {bundle.rule}, {kind}" + (" [FAKE answers]" if args.fake else ""), "",
@@ -60,7 +62,7 @@ def main() -> None:
         d = demo.route(q)
         ans, lp = "", float("nan")
         if bundle.is_cascade:
-            g = demo.cache.get(cache_key(small.name, build_prompt(None, q), params, 0))
+            g = demo.cache.get(cache_key(small.name, build_prompt(demo.prompt_style, q), params, 0))
             if g is not None:
                 ans = (g.text or "").strip().replace("\n", " ")
                 lp = g.mean_logprob if g.mean_logprob is not None else float("nan")

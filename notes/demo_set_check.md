@@ -1,54 +1,56 @@
-# Demo set check (T45), interim bundle
+# Demo set check (T45)
 
-*`python scripts/check_demo_set.py` on the interim bundle (F0 + TF-IDF features, two-head trained on Mixtral vs GPT-4, tau* by WSR on cal). Run 2026-10-22.*
+*`python scripts/check_demo_set.py` on `artifacts/bundle/router.pkl`.*
 
 ```
-tau* = 0.084, rule v1
+tau* = 9.352, rule v2, cascade (Qwen answers first)
 
-id        expect    got        delta_hat  query
-easy-01   local     frontier       0.115  What is the capital of Australia?   <-- MISMATCH
-easy-02   local     frontier       0.436  What is 15% of 80?   <-- MISMATCH
-easy-03   local     local          0.072  Which planet is known as the Red Planet? A) Venus B) Mars C)
-easy-04   local     frontier       0.115  Translate 'good morning' into French.   <-- MISMATCH
-easy-05   local     frontier       0.208  A pencil costs $2 and a notebook costs $5. How much do 3 pen   <-- MISMATCH
-easy-06   local     local          0.061  What gas do plants absorb from the air for photosynthesis?
-easy-07   local     frontier       0.326  Give me a synonym for 'happy'.   <-- MISMATCH
-easy-08   local     frontier       0.157  How many minutes are there in 3 hours?   <-- MISMATCH
-easy-09   local     frontier       0.225  Who wrote 'Romeo and Juliet'?   <-- MISMATCH
-easy-10   local     frontier       0.518  Is 17 a prime number?   <-- MISMATCH
-hard-01   frontier  frontier       0.320  A store raises a price by 20%, then lowers the new price by 
-hard-02   frontier  frontier       0.285  Prove that the square root of 2 is irrational.
-hard-03   frontier  frontier       0.305  Three friends split a bill. Ana pays twice what Ben pays, an
-hard-04   frontier  frontier       0.305  In how many ways can 8 people sit around a round table if tw
-hard-05   frontier  frontier       0.393  A bat and a ball cost $1.10 in total. The bat costs $1.00 mo
-hard-06   frontier  local         -0.030  Explain why the halting problem is undecidable, with the dia   <-- MISMATCH
-hard-07   frontier  frontier       0.341  A train leaves at 9:40 at 72 km/h. A second train leaves the
-hard-08   frontier  frontier       0.179  Which statement about the Treaty of Westphalia (1648) is mos
-hard-09   frontier  frontier       0.515  Find all real x such that |x - 3| + |x + 1| = 6, and show yo
-hard-10   frontier  frontier       0.215  A drug test is 99% sensitive and 95% specific. If 1% of peop
-chat-01   any       frontier       0.234  Suggest three names for a study group that works on AI proje
-chat-02   any       frontier       0.207  Write a two-line poem about a rainy evening in Dehradun.
-chat-03   any       frontier       0.219  What are the pros and cons of running a language model on a 
-chat-04   any       frontier       0.144  Summarise what a model router does in one sentence for someo
-chat-05   any       frontier       0.234  Plan a 30-minute revision session for an operating systems e
+id        expect    got        delta_hat     lp  query  ->  local answer
+easy-01   local     frontier       0.532  -0.43  What is the capital of Australia?  ->   was officially proclaimed as the capital in 1927.   <-- MISMATCH
+easy-02   local     frontier       0.063  -0.09  What is 15% of 80?  ->  200}{100} = 12$$  **Answer:** 15% of 80 is **12**.   <-- MISMATCH
+easy-03   local     frontier       0.294  -0.19  Which planet is known as the Red Planet? A) V  ->  em.  Therefore, the correct answer is **B) Mars**.   <-- MISMATCH
+easy-04   local     frontier       0.146  -0.19  Translate 'good morning' into French.  ->  Bonjour   <-- MISMATCH
+easy-05   local     local          0.004  -0.06  A pencil costs $2 and a notebook costs $5. Ho  ->  $5 = \$11$  **Answer:** The total cost is **$11**.
+easy-06   local     frontier       0.089  -0.12  What gas do plants absorb from the air for ph  ->  H_{12}O_6 + 6O_2$$  **Answer:** **Carbon dioxide**   <-- MISMATCH
+easy-07   local     frontier       0.324  -0.25  Give me a synonym for 'happy'.  ->  ul** or **cheerful** are usually the best choices.   <-- MISMATCH
+easy-08   local     frontier       0.024  -0.09  How many minutes are there in 3 hours?  ->  0 \times 3 = 180$$  So, **3 hours = 180 minutes**.   <-- MISMATCH
+easy-09   local     frontier       0.405  -0.24  Who wrote 'Romeo and Juliet'?  ->  ally lead to the reconciliation of their families.   <-- MISMATCH
+easy-10   local     local         -0.014  -0.08  Is 17 a prime number?  ->  visors: 1 and 17. Therefore, it is a prime number.
+hard-01   frontier  local          0.005  -0.07  A store raises a price by 20%, then lowers th  ->    *(Note: This happens because the 20% decrease is   <-- MISMATCH
+hard-02   frontier  local          0.005  -0.07  Prove that the square root of 2 is irrational  ->   Step 3: - If $q^2$ is even, then $q$ must be even   <-- MISMATCH
+hard-03   frontier  local         -0.063  -0.10  Three friends split a bill. Ana pays twice wh  ->  of payments: $$A + B + C = 114$$ $$(2B) + B + (B -   <-- MISMATCH
+hard-04   frontier  local         -0.044  -0.09  In how many ways can 8 people sit around a ro  ->  xt{Together} $$ $$ \text{Valid arrangements} = 504   <-- MISMATCH
+hard-05   frontier  local         -0.003  -0.06  A bat and a ball cost $1.10 in total. The bat  ->  on The bat and both balls cost **$1.16** together.   <-- MISMATCH
+hard-06   frontier  frontier       0.449  -0.21  Explain why the halting problem is undecidabl  ->  uate $D(D)$.  There are only two possible outcomes
+hard-07   frontier  local         -0.063  -0.10  A train leaves at 9:40 at 72 km/h. A second t  ->    So the equation becomes: $$72t = 90t - 37.5$$  R   <-- MISMATCH
+hard-08   frontier  local          0.000  -0.22  Which statement about the Treaty of Westphali  ->  various Italian states.  **Correct Answer:** **B**   <-- MISMATCH
+hard-09   frontier  local         -0.001  -0.04  Find all real x such that |x - 3| + |x + 1| =  ->   + 1) = 6$$ $$-x + x + 3 + 1 = 6$$ $$4 = 6$$  This   <-- MISMATCH
+hard-10   frontier  local          0.004  -0.06  A drug test is 99% sensitive and 95% specific  ->  tives)** $$P(T^+ | D) \cdot P(D) = 0.99 \times 0.0   <-- MISMATCH
+chat-01   any       frontier       0.290  -0.32  Suggest three names for a study group that wo  ->  e collective advancement of algorithms and models.
+chat-02   any       frontier       0.714  -0.75  Write a two-line poem about a rainy evening i  ->  ills, Where the monsoon whispers through the pine.
+chat-03   any       frontier       0.186  -0.33  What are the pros and cons of running a langu  ->  asily run massive models (like Llama 3 405B or GPT
+chat-04   any       frontier       0.716  -0.57  Summarise what a model router does in one sen  ->   so everything stays connected and works smoothly.
+chat-05   any       frontier       0.546  -0.33  Plan a 30-minute revision session for an oper  ->  wn one function each for the three subsystems.  **
 
-16/25 as planned
+8/25 as planned
 ```
 
-## What this shows
+## What this shows (run 1, 2026-11-16: cascade bundle, Qwen 4-bit MLX on Ani's M1, query sent as typed)
 
-**The interim router fails the demo: 8 of 10 easy questions go to the frontier.** It was trained on
-benchmark prompts (long, templated MMLU / GSM8K items), so a short natural question like "Is 17 a
-prime number?" looks unlike anything it saw, and it falls back on "send it out". This is DESIGN.md
-risk 5 (distribution shift), showing up exactly where the audience will see it.
+- **Qwen answered all 10 easy questions correctly, but 8 went to the frontier.** The cascade's
+  confidence signal for free-form answers is the mean token log-probability of the whole answer.
+  Long, predictable LaTeX working scores as "confident" (lp ≈ −0.06 to −0.10); a correct fact
+  followed by a paragraph of background prose scores as unsure (Canberra: −0.43). The signal
+  measures how predictable the text is, not whether the answer is right.
+- **Most "hard" questions are not hard for Qwen3.5-4B**: it got hard-01, 03, 05, 08 and 09 right in
+  the visible working. Keeping them local is the router doing its job; `expect: frontier` was wrong.
+- **10 of 25 answers hit the 512-token limit** (30–47 s each on the M1), so the live page would show
+  cut-off answers.
+- chat-04 is a real catch: Qwen explained a *network* router; the cascade escalated it.
 
-Fixes, in order of how much they help:
-
-1. **Cascade (D-12).** Qwen answers first; the router looks at Qwen's self-agreement / confidence.
-   That signal is about the *answer*, so it travels to new kinds of questions far better than
-   query-text features. On the Mixtral pair it tripled the savings (`notes/cascade_explore.md`).
-2. **Train the bundle on the Qwen pair** (Track B), not Mixtral, as D-07 already says.
-3. **Add a few hundred short, natural questions** with Qwen and Gemini answers to the training data
-   (cheap on the free tier), so "short and simple" stops being out of distribution.
-
-Re-run this check after each of these; the demo set itself stays fixed.
+The router was trained on GSM8K answers written with the "briefly, plain text, 'The answer is N.'"
+prompt, while the server sent the raw query. Fix (same commit): the demo now uses that style for
+every query (`PROMPT_TEMPLATES["demo"]`; `--raw-prompt` restores the old behaviour). Run 2 below
+checks whether that fixes the easy questions. If it does not, the hard set must be replaced with
+questions Qwen actually gets wrong, and the confidence signal should be read from the final
+answer line only.

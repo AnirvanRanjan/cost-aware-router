@@ -65,8 +65,9 @@ class Demo:
 
     def __init__(self, bundle: RouterBundle, small, large, cache: GenerationCache, *,
                  params: GenParams = GenParams(max_tokens=512), offline: bool = False,
-                 frontier_price: tuple[float, float] = (3.0, 15.0)):
+                 frontier_price: tuple[float, float] = (3.0, 15.0), prompt_style: str | None = "demo"):
         self.bundle, self.small, self.large, self.cache = bundle, small, large, cache
+        self.prompt_style = prompt_style          # router.generate.PROMPT_TEMPLATES key; None = raw query
         self.params, self.offline, self.frontier_price = params, offline, frontier_price
         self.totals = Totals()
         self.lock = threading.Lock()
@@ -87,7 +88,7 @@ class Demo:
 
     def route(self, query: str) -> dict:
         if getattr(self.bundle, "is_cascade", False):
-            prompt = build_prompt(None, query)
+            prompt = build_prompt(self.prompt_style, query)
             key = cache_key(self.small.name, prompt, self.params, 0)
             with self.lock:
                 hit = self.cache.get(key)
@@ -107,7 +108,7 @@ class Demo:
 
     def stream(self, query: str, force: str | None = None):
         """Yield ("route", dict), then ("token", str)..., then ("done", dict). Errors: ("error", str)."""
-        prompt = build_prompt(None, query)
+        prompt = build_prompt(self.prompt_style, query)
         t0 = time.perf_counter()
         first = None
         pieces: list[str] = []
