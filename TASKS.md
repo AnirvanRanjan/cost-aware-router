@@ -32,11 +32,11 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 
 | Who | Do this now | Why it can't wait |
 |---|---|---|
-| **All** | Kartiken: reply yes/no on **D-14** ✅ (voted yes 2026-11-15; D-14 is now Agreed). Everyone: read ch. 1, 7, 8 for anything wrong about your lane. | D-14 decides how the demo router is built |
-| **A** · Ani | #17 merged ✅; Qwen numbers in ch. 1 ✅; ch. 7–8 drafted ✅. Rewrite ch. 1–3, 7–8 in your own words; branch protection (T06); re-run T45 when B's cascade bundle exists. | Everyone builds on `main` |
-| **B** · HSID | `cascade_predictions.parquet` (+ `.json`) uploaded to release `trackb-6265adf7ffa4a602` ✅; **T41**: cascade bundle built (`cascade_1sample`, D-14) with 100% test agreement, and `serve.py` cascade integration ready for Kartiken ✅. | Unblocks demo (T42/T43) and T45/T46/T48 |
-| **C** · Sarthak | #17 merged ✅. Add the seed-free bound to `router/threshold.py` (`select_tau(method="wsr_avg")`) so the demo bundle can use it. Move `chapter_C_draft.md` to `thesis/05_results.md` with the seed-free 41.3% as the headline. | The headline number is his |
-| **D** · Kartiken | Re-measure Qwen tok/s with the `mlx_lm.generate` CLI ✅ (2026-11-15: median **29.1 tok/s**; the 8.4 does not reproduce — `notes/m2_checks.md`). D-14 vote ✅ (yes, 2026-11-15). **Next: T42/T43 with HSID's cascade bundle** (`python scripts/11_build_bundle.py --mode cascade`, then `serve_demo.py`): both routes, Safari, a "Qwen is answering…" status while the local answer is generated (the page is blank until then). Delete the old `artifacts/cache/demo.sqlite` first. Then T46, T47, T53. | The demo is the one thing only the M2 can do |
+| **All** | Vote on **D-15** (demo uses the T61 3-answer router; `notes/d15_demo_router.md`). Everyone: read ch. 1, 7, 8 for anything wrong about your lane. | D-15 decides what the M2 runs |
+| **A** · Ani | Push; run T45 run 3 on the Mac with the D-15 bundle (`python scripts/11_build_bundle.py --mode cascade_t61 --samples 3`, then `python scripts/check_demo_set.py --out-md notes/demo_set_check_run3.md`). Rewrite ch. 1–3, 7–8 in your own words; branch protection (T06). | The demo set must pass before the video |
+| **B** · HSID | Review D-15: the demo now rebuilds your T61 `cascade_3sample` router (`--mode cascade_t61`, `router/signals.py`, tested against `16_trackb_preview.py`); your `--mode cascade` bundle stays as the D-14 comparison. Rewrite ch. 4 in your own words. | The demo router is yours |
+| **C** · Sarthak | Seed-free bound is now `select_tau(method="wsr_avg")` in `router/threshold.py` (ported from your script 17, identical p-values): check it. **T28**: lock numbers from the release file and record the scikit-learn version (a refit certifies 48.3%, the release file 41.3%: `notes/d15_demo_router.md`). Move `chapter_C_draft.md` to `thesis/05_results.md`. | The headline number is his |
+| **D** · Kartiken | Tok/s ✅ and D-14 vote ✅. **Next, on the M2: T42/T43 with the D-15 bundle** (`python scripts/11_build_bundle.py --mode cascade_t61 --samples 3`, then `python scripts/serve_demo.py`): both routes, Safari; the page now shows "Qwen is answering…" and the signal behind each decision. Delete the old `artifacts/cache/demo.sqlite` first. Then T46, T47, T53. | The demo is the one thing only the M2 can do |
 
 ---
 
@@ -98,7 +98,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T42 | D | `serve.py` running with Qwen (MLX) + Gemini on the M2: p99 7.6 ms with the interim bundle; re-run with B's final bundle (T41) | 🔶 |
 | T43 | D | Web page with real models: both routes verified on the M2; check Safari too | 🔶 |
 | T44 | C | Replay mode: 200 test questions through the live router, matches offline (PR #17) | ✅ merged; re-run with T41 |
-| T45 | A | Demo set (25 questions) checked against the final bundle (`scripts/check_demo_set.py`, now runs Qwen first for cascade bundles) | 🔶 script ready; run on the Mac with the cascade bundle |
+| T45 | A | Demo set checked against the final bundle (`scripts/check_demo_set.py`). Runs 1–2 failed on the D-14 bundle; v2 set from Track B test questions + D-15 bundle | 🔶 run 3 on the Mac |
 | T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | 🔶 code exists |
 | T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | ⬜ |
 | T48 | All | Backup video of the full demo | ⬜ |
@@ -113,7 +113,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T52 | C | Chapter 5, Cost model, thresholds, guarantees, results (`notes/chapter_C_draft.md`) | 🔶 draft needs fixes |
 | T53 | D | Chapter 6, Local inference, the GPU run, serving, demo performance | ⬜ |
 | T54 | A | Ch. 1, 2, 7, 8 drafts ✅ (ch. 1 has the Qwen preview numbers); own wording; merge all chapters | 🔶 |
-| T55 | D | Reproducibility: one command per figure, tested on a fresh clone | ⬜ |
+| T55 | D | Reproducibility: one command per figure, tested on a fresh clone. Record the scikit-learn version: a refit of T61 certifies 48.3% vs 41.3% for the release file (`notes/d15_demo_router.md`) | ⬜ |
 | T56 | All | Slides | ⬜ |
 | T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | ⬜ |
 | T58 | A | Repo public (D-09), MIT licence (D-10) | ✅ |

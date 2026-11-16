@@ -319,6 +319,36 @@ def wsr_pvalues(scores, s_S, s_L, taus, rho: float = 0.95, delta: float = 0.05, 
     return np.clip(out, 0.0, 1.0)
 
 
+def wsr_avg_pvalues(scores, s_S, s_L, taus, rho: float = 0.95, delta: float = 0.05, M: int = 50,
+                    chunk: int = 128) -> np.ndarray:
+    """Seed-free WSR p-values (T60, lane C; ported from scripts/17_t60_seed_free_wsr.py).
+
+    A single WSR run depends on the order in which it reads the queries (certified savings ranged
+    40.8-74.9% across 20 seeds on Track B). For each of M fixed permutations, the terminal wealth
+    K_n of the betting martingale is an e-value (E[K_n] <= 1 under H0); their mean is also an
+    e-value, so p = min(1, 1 / mean) is valid by Markov's inequality, with no seed to pick.
+    """
+    scores, s_S, s_L = _check(scores, s_S, s_L)
+    n = len(scores)
+    a0, b0 = _margin_columns(s_S, s_L, rho)
+    taus = np.asarray(taus, dtype=float)
+    t = np.arange(1, n + 1, dtype=float)
+    e_sum = np.zeros(len(taus))
+    for m in range(M):
+        perm = np.random.default_rng(m).permutation(n)
+        sc, a, b = scores[perm], a0[perm], b0[perm]
+        for start in range(0, len(taus), chunk):
+            tt = taus[start:start + chunk, None]
+            e = np.where(sc[None, :] > tt, a[None, :], b[None, :])
+            loss = (rho - e) / (2 * rho)
+            mu = (np.cumsum(loss, axis=1) + 0.5) / (1 + t)
+            s2 = (np.cumsum((loss - mu) ** 2, axis=1) + 0.25) / (1 + t)
+            s2 = np.concatenate([np.full((len(tt), 1), 0.25), s2[:, :-1]], axis=1)
+            nu = np.minimum(np.sqrt(2 * np.log(1 / delta) / (n * s2)), 1.0)
+            e_sum[start:start + chunk] += np.exp(np.sum(np.log1p(-nu * (loss - 0.5)), axis=1))
+    return np.clip(1.0 / np.maximum(e_sum / M, 1e-12), 0.0, 1.0)
+
+
 def _bootstrap_margins(scores, s_S, s_L, taus, rho, B, seed, chunk=200) -> tuple[np.ndarray, np.ndarray]:
     """(B, m) bootstrap replicates of mean e(tau), resampling queries (pairs kept together)."""
     scores, s_S, s_L = _check(scores, s_S, s_L)
@@ -387,12 +417,13 @@ def select_tau(
     failure. tau* is the last threshold rejected. Always-frontier has PGR = 1 by definition, so it
     is accepted without a test.
 
-    method: "wsr" (default: finite-sample valid and tight), "hoeffding" (valid, loose),
+    method: "wsr" (default: finite-sample valid and tight), "wsr_avg" (the same bound averaged over
+    50 query orders: valid and seed-free, T60), "hoeffding" (valid, loose),
     "bootstrap" (DESIGN.md's paired bootstrap; asymptotic only), or "naive" (point estimate, no
     guarantee; reported to show the optimism gap).
     """
-    if method not in ("wsr", "bootstrap", "hoeffding", "naive"):
-        raise ValueError("method must be 'wsr', 'bootstrap', 'hoeffding' or 'naive'")
+    if method not in ("wsr", "wsr_avg", "bootstrap", "hoeffding", "naive"):
+        raise ValueError("method must be 'wsr', 'wsr_avg', 'bootstrap', 'hoeffding' or 'naive'")
     scores, s_S, s_L = _check(scores, s_S, s_L)
     taus = breakpoints(scores) if taus is None else np.r_[np.asarray(taus, dtype=float), -np.inf]
     sw = evaluate_thresholds(scores, s_S, s_L, taus, c_S=c_S, c_L=c_L)   # ascending tau
@@ -407,6 +438,8 @@ def select_tau(
         p = hoeffding_pvalues(scores, s_S, s_L, sw.tau, rho)
     elif method == "wsr":
         p = wsr_pvalues(scores, s_S, s_L, sw.tau, rho, delta=delta, seed=seed)
+    elif method == "wsr_avg":
+        p = wsr_avg_pvalues(scores, s_S, s_L, sw.tau, rho, delta=delta)
     else:
         p = bootstrap_pvalues(scores, s_S, s_L, sw.tau, rho, B=B, seed=seed)
     p = np.where(sw.k == sw.n, 0.0, p)            # always-frontier: PGR = 1, no test needed

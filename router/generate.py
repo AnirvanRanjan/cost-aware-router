@@ -251,6 +251,12 @@ class FakeClient:
             out.append(Generation(text, n_in=len(p) // 4, n_out=len(text) // 4, latency_ms=1.0, mean_logprob=-0.1))
         return out
 
+    def option_logprobs(self, prompt: str, labels) -> dict[str, float]:
+        """Stand-in for MLXClient.option_logprobs: the option at len(prompt) % n is very likely."""
+        self.calls += 1
+        pick = labels[len(prompt) % len(labels)]
+        return {lab: (-0.01 if lab == pick else -6.0) for lab in labels}
+
     def stream(self, prompt: str, params: GenParams):
         """Yield the answer a word at a time (for the demo server's streaming path)."""
         g = self.generate_batch([prompt], params, [0])[0]
@@ -311,6 +317,13 @@ class MLXClient:
         return Generation(text, n_in=int(n_in or len(tok.encode(text_in))), n_out=int(n_out),
                           latency_ms=(time.perf_counter() - t0) * 1000,
                           mean_logprob=(sum(lps) / len(lps)) if lps else None)
+
+    def option_logprobs(self, prompt: str, labels) -> dict[str, float]:
+        """Next-token log-probabilities of the option letters, one forward pass (as Track B scored MCQ)."""
+        from router.mcq_mlx import MLXOptionScorer
+
+        model, tok = self._load()
+        return MLXOptionScorer(model, tok).option_logprobs(prompt, list(labels))
 
     def stream(self, prompt: str, params: GenParams):
         """Yield text pieces as the local model decodes them."""

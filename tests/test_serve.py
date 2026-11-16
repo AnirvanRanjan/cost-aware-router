@@ -133,3 +133,70 @@ def test_cascade_demo_route_endpoint_generates_small_first():
     assert res["route"] == "local"
     assert d.small.calls == 1
 
+
+
+# ---- D-15: the T61 signals bundle (option probability for MCQ, k answers for arithmetic) ----------
+
+class SignalRouter:
+    """Escalates unless Qwen is sure: all k answers agree, or the chosen option has p >= 0.9."""
+
+    def predict_gap(self, X):
+        X = np.asarray(X, dtype=float)
+        agree, p = X[:, 0], X[:, 5]
+        sure = np.where(np.isnan(p), agree >= 1.0, p >= 0.9)
+        return np.where(sure, -0.2, 0.5)
+
+
+class AgreeingClient(gen.FakeClient):
+    """Every sample gives the same answer."""
+
+    def generate_batch(self, prompts, params, sample_idx):
+        self.calls += len(prompts)
+        return [gen.Generation("3 x 4 = 12. The answer is 12.", 10, 10, mean_logprob=-0.05) for _ in prompts]
+
+
+def _t61_demo(small=None, samples=3):
+    from router.bundle import T61Featurizer
+
+    b = RouterBundle(T61Featurizer(samples), SignalRouter(), tau=0.0, _is_cascade=True,
+                     meta={"samples": samples, "sampling": {"temperature": 0.7, "top_p": 0.8}})
+    return Demo(b, small or gen.FakeClient("qwen3.5-4b"), gen.FakeClient("gemini-3-flash"), gen.GenerationCache(":memory:"))
+
+
+def test_t61_multiple_choice_scores_options_once_and_stays_local_when_sure():
+    d = _t61_demo()
+    r = d.chat("Which planet is known as the Red Planet? A) Venus B) Mars C) Jupiter D) Saturn")
+    assert r["route"]["route"] == "local" and r["route"]["kind"] == "multiple choice" and r["route"]["certified"]
+    assert r["answer"].startswith("The answer is ")
+    assert d.small.calls == 1 and d.large.calls == 0          # one forward pass, no generation
+    assert r["status"]["message"].endswith("on this Mac…")
+
+
+def test_t61_arithmetic_samples_k_answers_and_escalates_when_they_disagree():
+    d = _t61_demo()                                          # FakeClient gives 3 different numbers
+    r = d.chat("A pencil costs 2 dollars. How much do 3 pencils cost?")
+    assert r["route"]["route"] == "frontier" and r["route"]["kind"] == "arithmetic"
+    assert r["route"]["signal"] == "1/3 answers agree"
+    assert d.small.calls == 3 and d.large.calls == 1
+
+
+def test_t61_arithmetic_agreeing_answers_stay_local_and_are_cached():
+    d = _t61_demo(small=AgreeingClient("qwen3.5-4b"))
+    r = d.chat("What is 3 times 4?")
+    assert r["route"]["route"] == "local" and r["route"]["signal"] == "3/3 answers agree"
+    assert r["answer"].endswith("The answer is 12.")
+    d.chat("What is 3 times 4?")
+    assert d.small.calls == 3                                # second ask: all 3 answers from the cache
+
+
+def test_t61_free_form_is_labelled_uncertified():
+    d = _t61_demo(small=AgreeingClient("qwen3.5-4b"))
+    r = d.route("Who wrote Romeo and Juliet?")
+    assert r["kind"] == "free-form" and r["certified"] is False
+
+
+def test_t61_forced_frontier_skips_the_local_model():
+    d = _t61_demo()
+    r = d.chat("What is 3 times 4?", force="frontier")
+    assert r["route"]["route"] == "frontier" and r["route"]["forced"]
+    assert d.small.calls == 0 and d.large.calls == 1

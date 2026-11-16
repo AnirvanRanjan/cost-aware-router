@@ -9,8 +9,9 @@ Reads configs/demo_set.yaml (each query has `expect: local | frontier | any`), r
 exactly as the live server does, and prints a table. Exits non-zero if any planned decision would
 surprise us on stage. Re-run after every new bundle (new features, new tau*).
 
-Cascade bundles (D-14) decide on Qwen's own answer, so Qwen answers each query first, through the
-same code path as `serve.py` (`Demo.route`). Answers are cached in the demo's cache
+Cascade bundles (D-14, D-15) decide on Qwen's own answer, so Qwen answers each query first, through
+the same code path as `serve.py`: option probabilities for multiple choice, k sampled answers for
+arithmetic (D-15), and a label on question types the router was not certified on. Answers are cached in the demo's cache
 (artifacts/cache/demo.sqlite), so the check also warms the cache for the live demo; the frontier
 model is never called.
 """
@@ -25,7 +26,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from router.bundle import RouterBundle  # noqa: E402
-from router.generate import FakeClient, GenerationCache, GenParams, build_prompt, cache_key, load_client  # noqa: E402
+from router.generate import FakeClient, GenerationCache, GenParams, load_client  # noqa: E402
 from router.serve import Demo  # noqa: E402
 
 
@@ -43,7 +44,7 @@ def main() -> None:
     args = ap.parse_args()
 
     if not args.bundle.exists():
-        sys.exit(f"no bundle at {args.bundle}: run scripts/11_build_bundle.py --mode cascade first")
+        sys.exit(f"no bundle at {args.bundle}: run scripts/11_build_bundle.py --mode cascade_t61 first")
     bundle = RouterBundle.load(args.bundle)
     items = yaml.safe_load(args.demo_set.read_text())["queries"]
 
@@ -54,23 +55,26 @@ def main() -> None:
                 prompt_style=None if args.raw_prompt else "demo")
 
     kind = "cascade (Qwen answers first)" if bundle.is_cascade else "query-only"
-    lines = [f"tau* = {bundle.tau:.3f}, rule {bundle.rule}, {kind}" + (" [FAKE answers]" if args.fake else ""), "",
-             f"{'id':<10}{'expect':<10}{'got':<10}{'delta_hat':>10}{'lp':>7}  query  ->  local answer"]
+    lines = [f"tau* = {bundle.tau:.3f}, rule {bundle.rule}, {kind}, {bundle.meta.get('featurizer', '')}"
+             + (" [FAKE answers]" if args.fake else ""), "",
+             f"{'id':<10}{'expect':<10}{'got':<10}{'delta_hat':>10}  {'signal':<34}query  ->  local answer"]
     bad = 0
     for it in items:
         q = it["query"]
-        d = demo.route(q)
-        ans, lp = "", float("nan")
-        if bundle.is_cascade:
-            g = demo.cache.get(cache_key(small.name, build_prompt(demo.prompt_style, q), params, 0))
-            if g is not None:
-                ans = (g.text or "").strip().replace("\n", " ")
-                lp = g.mean_logprob if g.mean_logprob is not None else float("nan")
+        if bundle.is_cascade:                      # exactly what the live server does, minus the frontier call
+            with demo.lock:
+                d, ans, extra = demo._answer_local_first(q)
+            d = {**d.as_dict(), **extra}
+        else:
+            d, ans, extra = demo.route(q), "", {}
+        ans = " ".join((ans or "").split())
+        sig = (f"{extra.get('kind', '')}: {extra.get('signal', '')}" if extra else "")
+        sig += " [uncertified]" if extra.get("certified") is False else ""
         expect = it.get("expect", "any")
         ok = expect in ("any", d["route"])
         bad += not ok
-        lines.append(f"{it['id']:<10}{expect:<10}{d['route']:<10}{d['delta_hat']:>10.3f}{lp:>7.2f}  "
-                     f"{q[:45]}" + (f"  ->  {ans[-50:]}" if ans else "") + ("" if ok else "   <-- MISMATCH"))
+        lines.append(f"{it['id']:<10}{expect:<10}{d['route']:<10}{d['delta_hat']:>10.3f}  {sig[:33]:<34}"
+                     f"{q[:40]}" + (f"  ->  {ans[-50:]}" if ans else "") + ("" if ok else "   <-- MISMATCH"))
     lines += ["", f"{len(items) - bad}/{len(items)} as planned"]
     print("\n".join(lines))
     if args.out_md:

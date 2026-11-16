@@ -3,6 +3,7 @@
 
     python scripts/11_build_bundle.py                                  # Mixtral labels (dev pair)
     python scripts/11_build_bundle.py --scores artifacts/trackb/scores.parquet --small qwen3.5-4b
+    python scripts/11_build_bundle.py --mode cascade_t61 --samples 3     # the demo bundle (D-15)
 
 Trains the two-head router on TRAIN, calibrates both heads on CAL, picks tau* on CAL with the WSR
 fixed-sequence rule (grid from TRAIN scores), and writes artifacts/bundle/router.pkl.
@@ -202,6 +203,73 @@ def build_cascade_bundle(args: argparse.Namespace) -> None:
     print(f"wrote {args.out}  (T41 check: {agree:.0%} agreement on {len(idx)} test queries)")
 
 
+def build_t61_bundle(args: argparse.Namespace) -> None:
+    """The demo bundle from lane B's official T61 cascade router (D-15).
+
+    Same signals (router.signals), same model (GapRegressor = scripts/16_trackb_preview.py), same
+    labels, rule v2 and threshold grid as the research table, so with --bound wsr_avg the demo's
+    tau* is the headline tau* (notes/t60_certification_report.md) and the live server routes with it.
+    """
+    from router.bundle import GapRegressor, T61Featurizer
+    from router.signals import option_signals, sample_signals
+
+    corpus = schema.read(args.dir / "corpus.parquet", schema.CORPUS)
+    rb = schema.read(args.dir / "scores.parquet", schema.SCORES)
+    resp = schema.read(args.dir / "qwen_responses.parquet", schema.RESPONSES)
+    opts = pd.read_parquet(args.dir / "qwen_mcq_options.parquet")
+    c = corpus.set_index("qid")
+
+    rows = []
+    for qid, g in resp.groupby("qid"):
+        g = g.sort_values("sample_idx").head(args.samples)
+        q, gold = c.at[qid, "prompt"], float(c.at[qid, "reference"])
+        sig, ans, _ = sample_signals(q, g["text"].tolist(), g["mean_logprob"].tolist(), g["n_out"].tolist())
+        rows.append({"qid": qid, "s_S": float(ans is not None and abs(ans - gold) < 1e-6), "sig": sig})
+    for qid, correct, lps in zip(opts["qid"], opts["correct"], opts["logprobs"]):
+        sig, _ = option_signals(json.loads(lps))
+        rows.append({"qid": qid, "s_S": float(correct), "sig": sig})
+    d = corpus.merge(pd.DataFrame(rows), on="qid", how="inner")
+    d = d[d["source"].isin(HEADLINE)].reset_index(drop=True)
+    big = rb[rb["model"] == args.large].set_index("qid")
+    s_S, s_L = d["s_S"].to_numpy(float), big.loc[d["qid"], "score"].to_numpy(float)
+    split = d["split"].to_numpy()
+    tr, ca, te = split == "train", split == "cal", split == "test"
+    texts, sigs, sources = d["prompt"].tolist(), d["sig"].tolist(), d["source"].tolist()
+
+    feat = T61Featurizer(samples=args.samples)
+    router = GapRegressor(name=feat.name, seed=args.seed).fit(feat.transform(texts, sigs, sources)[tr], (s_L - s_S)[tr])
+    prices = PriceTable.load()
+    p = prices[args.large] if args.large in prices.models else prices[prices.reference_frontier]
+    bundle = RouterBundle(featurizer=feat, router=router, tau=0.0, rule=args.rule, frontier_price=(p.input, p.output),
+                          mean_out_tokens=float(big["mean_n_out"].mean()), _is_cascade=True, ceil_tokens=True)
+    score = bundle.predict(texts, signals_list=sigs, sources=sources)["score"]
+    sel = th.select_tau(score[ca], s_S[ca], s_L[ca], taus=th.threshold_grid(score[tr]),
+                        rho=args.rho, delta=args.delta, method=args.bound)
+    bundle.tau = sel.tau_star
+    test = th.evaluate_at_tau(score[te], s_S[te], s_L[te], sel.tau_star, B=500)
+    per_source = {s: float((score[te & (d["source"] == s).to_numpy()] > sel.tau_star).mean()) for s in HEADLINE}
+    bundle.meta = {"pair": {"small": args.small, "large": args.large}, "rule": args.rule, "rho": args.rho,
+                   "delta": args.delta, "bound": args.bound, "certified": sel.certified, "cal": sel.cal,
+                   "test": {k: test[k] for k in ("alpha", "pgr", "savings")},
+                   "test_frontier_share_by_source": per_source, "featurizer": feat.name,
+                   "is_cascade": True, "samples": args.samples,
+                   # How Track B sampled GSM8K (gpu_trackb_vllm.py); the server samples the same way so
+                   # the signals mean what they meant in training.
+                   "sampling": {"temperature": 0.7, "top_p": 0.8}, "sources": list(HEADLINE)}
+
+    bundle.save(args.out)
+    loaded = RouterBundle.load(args.out)          # T41: the saved bundle, one query at a time, agrees
+    idx = np.flatnonzero(te)[:1000]
+    got = np.array([loaded.decide(texts[i], signals=sigs[i], source=sources[i]).route == "frontier" for i in idx])
+    agree = float((got == (score[idx] > sel.tau_star)).mean())
+    bundle.meta["t41_agreement_1000"] = agree
+    bundle.save(args.out)
+    print(json.dumps(bundle.meta, indent=2, default=float))
+    if agree < 1.0:
+        sys.exit(f"T41 check failed: bundle agrees with evaluation on only {agree:.1%} of 1,000 test queries")
+    print(f"wrote {args.out}  (T41 check: {agree:.0%} agreement on {len(idx)} test queries)")
+
+
 def build_query_bundle(args: argparse.Namespace) -> None:
     from sklearn.decomposition import TruncatedSVD
 
@@ -295,7 +363,13 @@ def build_query_bundle(args: argparse.Namespace) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--mode", choices=("cascade", "query"), default="cascade")
+    ap.add_argument("--mode", choices=("cascade_t61", "cascade", "query"), default="cascade",
+                    help="cascade_t61: lane B's official T61 router, the research table's model (D-15); "
+                         "cascade: answer-text features, one answer (D-14); query: question only")
+    ap.add_argument("--samples", type=int, choices=(1, 3), default=3,
+                    help="cascade_t61: answers Qwen samples per arithmetic question (1 = D-14, 3 = D-15)")
+    ap.add_argument("--bound", choices=("wsr_avg", "wsr"), default="wsr_avg",
+                    help="cascade_t61: seed-free WSR (T60, the headline method) or single-order WSR")
     ap.add_argument("--dir", type=Path, default=Path("artifacts/trackb"))
     ap.add_argument("--corpus", type=Path, default=Path("artifacts/routerbench/corpus.parquet"))
     ap.add_argument("--scores", type=Path, default=Path("artifacts/routerbench/scores.parquet"))
@@ -312,7 +386,9 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=Path("artifacts/bundle/router.pkl"))
     args = ap.parse_args()
 
-    if args.mode == "cascade":
+    if args.mode == "cascade_t61":
+        build_t61_bundle(args)
+    elif args.mode == "cascade":
         build_cascade_bundle(args)
     else:
         build_query_bundle(args)

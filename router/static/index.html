@@ -132,12 +132,18 @@ function ask(ev) {
   $("answer").textContent = ""; $("meta").innerHTML = ""; $("decision").innerHTML = "";
   const t0 = performance.now();
   const es = new EventSource("/chat/stream?q=" + encodeURIComponent(q));
+  es.addEventListener("status", (e) => {          // the local model is answering before the router decides
+    $("decision").innerHTML = `<span class="sub">${JSON.parse(e.data).message}</span>`;
+  });
   es.addEventListener("route", (e) => {
     const d = JSON.parse(e.data);
     const where = d.route === "frontier" ? "FRONTIER" : "LOCAL";
+    const why = d.signal ? ` · ${d.kind}: ${d.signal}` : "";
+    const cert = d.certified === false ? ` · <b>not a certified question type</b>` : "";
     $("decision").innerHTML = `<span class="badge ${d.route}">${where}</span>` +
-      `<span class="sub">${d.model} · router ${d.router_ms.toFixed(1)} ms${d.forced ? " · forced" : ""}</span>`;
-    $("bars").hidden = false;
+      `<span class="sub">${d.model} · router ${d.router_ms.toFixed(1)} ms${d.forced ? " · forced" : ""}${why}${cert}</span>`;
+    $("bars").hidden = d.s_hat_S == null;
+    if (d.s_hat_S == null) return;
     $("bS").style.width = (100 * d.s_hat_S) + "%"; $("vS").textContent = d.s_hat_S.toFixed(2);
     $("bL").style.width = (100 * d.s_hat_L) + "%"; $("vL").textContent = d.s_hat_L.toFixed(2);
     // Δ̂ in [-1, 1] drawn on [0, 100%]; τ* marker on the same scale (rule v1)

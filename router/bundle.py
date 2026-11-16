@@ -195,6 +195,45 @@ class CascadeFeaturizer:
         )
 
 
+class T61Featurizer:
+    """Features of lane B's official cascade routers (T61): Qwen's confidence signals + source one-hot.
+
+    Input is one signals dict per query (`router.signals`), computed from Track B offline and from
+    the live model in the server, so the demo routes with the same features it was certified on.
+    """
+
+    def __init__(self, samples: int = 3):
+        self.samples = samples
+        self.name = f"cascade_t61_{samples}sample"
+
+    def transform(self, texts: Sequence[str], signals_list: Sequence[dict] | None = None,
+                  sources: Sequence[str | None] | None = None, **kwargs) -> np.ndarray:
+        from router.signals import feature_matrix
+
+        if signals_list is None:
+            raise ValueError("T61Featurizer needs Qwen's signals (signals_list); see router.signals")
+        return feature_matrix(signals_list, sources if sources is not None else [None] * len(texts))
+
+
+class GapRegressor:
+    """Gradient-boosted trees on the quality gap s_L - s_S, exactly as `scripts/16_trackb_preview.py`."""
+
+    def __init__(self, name: str, seed: int = 42, l2_regularization: float = 1.0):
+        self.name, self.seed, self.l2_regularization = name, seed, l2_regularization
+        self.model = None
+
+    def fit(self, X, gap) -> GapRegressor:
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
+        self.model = HistGradientBoostingRegressor(max_iter=300, learning_rate=0.05, max_leaf_nodes=31,
+                                                   l2_regularization=self.l2_regularization,
+                                                   random_state=self.seed).fit(X, gap)
+        return self
+
+    def predict_gap(self, X) -> np.ndarray:
+        return np.clip(self.model.predict(X), -1.0, 1.0)
+
+
 @dataclass
 class Decision:
     route: str               # "local" | "frontier"
@@ -221,6 +260,7 @@ class RouterBundle:
     meta: dict = field(default_factory=dict)
     version: str = BUNDLE_VERSION
     _is_cascade: bool = False
+    ceil_tokens: bool = False            # count prompt tokens as router.data.approx_tokens does (T61 bundles)
 
     @property
     def is_cascade(self) -> bool:
@@ -259,7 +299,10 @@ class RouterBundle:
         s_S, s_L = np.asarray(s_S, dtype=float), np.asarray(s_L, dtype=float)
         delta = np.clip(s_L - s_S, -1.0, 1.0)
         if self.rule == "v2":
-            n_in = np.array([max(1, len(t) // 4) for t in texts], dtype=float)
+            if getattr(self, "ceil_tokens", False):    # = router.data.approx_tokens (T61 bundles)
+                n_in = np.array([max(1, -(-len(t) // 4)) for t in texts], dtype=float)
+            else:
+                n_in = np.array([max(1, len(t) // 4) for t in texts], dtype=float)
             c_L = (self.frontier_price[0] * n_in + self.frontier_price[1] * self.mean_out_tokens) / 1e6
             score = delta / np.maximum(c_L, 1e-9)
         else:
@@ -279,9 +322,12 @@ class RouterBundle:
         confidence: float | None = None,
         source: str | None = None,
         mean_logprob: float | None = None,
+        signals: dict | None = None,
     ) -> Decision:
         t0 = time.perf_counter()
         kwargs = {}
+        if signals is not None:
+            kwargs["signals_list"] = [signals]
         if confidence is not None:
             kwargs["p_chosen_list"] = [confidence]
         if source is not None:

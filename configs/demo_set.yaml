@@ -1,35 +1,81 @@
-# T45 demo set (DRAFT). Every query is checked with `python scripts/check_demo_set.py` against the
-# bundle the demo will use; swap out any query whose decision is not what `expect` says.
-# Rule of thumb for picking: easy = one fact or one step; hard = several dependent steps, or a trap.
-# Final check: after the Qwen-trained bundle exists (T41 + Track B), not before.
+# T45 demo set, v2 (2026-11-16, D-15). Checked with `python scripts/check_demo_set.py` against the
+# bundle the demo will use (`python scripts/11_build_bundle.py --mode cascade_t61 --samples 3`).
+#
+# easy / hard come from the Track B TEST split, so the router is certified on exactly this kind of
+# question: easy = Qwen was right and the certified router kept it local; hard = Qwen was wrong,
+# GPT-4 right, and the router escalated. `qid` and `note` say where each came from. The Mac samples
+# its own answers, so a few decisions can differ live: swap out any that do, using the check's output.
+# free = question types the router was NOT certified on (labelled so on the page); chat = open-ended.
 queries:
-  # ---- 10 easy: should stay on the Mac ----
-  - {id: easy-01, expect: local, query: "What is the capital of Australia?"}
-  - {id: easy-02, expect: local, query: "What is 15% of 80?"}
-  - {id: easy-03, expect: local, query: "Which planet is known as the Red Planet? A) Venus B) Mars C) Jupiter D) Saturn"}
-  - {id: easy-04, expect: local, query: "Translate 'good morning' into French."}
-  - {id: easy-05, expect: local, query: "A pencil costs $2 and a notebook costs $5. How much do 3 pencils and 1 notebook cost?"}
-  - {id: easy-06, expect: local, query: "What gas do plants absorb from the air for photosynthesis?"}
-  - {id: easy-07, expect: local, query: "Give me a synonym for 'happy'."}
-  - {id: easy-08, expect: local, query: "How many minutes are there in 3 hours?"}
-  - {id: easy-09, expect: local, query: "Who wrote 'Romeo and Juliet'?"}
-  - {id: easy-10, expect: local, query: "Is 17 a prime number?"}
 
-  # ---- 10 hard: should go to the frontier ----
-  - {id: hard-01, expect: frontier, query: "A store raises a price by 20%, then lowers the new price by 20%. A customer pays $96. What was the original price, and what single percentage change would have had the same effect?"}
-  - {id: hard-02, expect: frontier, query: "Prove that the square root of 2 is irrational."}
-  - {id: hard-03, expect: frontier, query: "Three friends split a bill. Ana pays twice what Ben pays, and Ben pays $6 more than Chen. Together they pay $114 including a 14% tip on the food. How much was the food, and how much did each person pay?"}
-  - {id: hard-04, expect: frontier, query: "In how many ways can 8 people sit around a round table if two particular people refuse to sit next to each other?"}
-  - {id: hard-05, expect: frontier, query: "A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. A second ball costs 20% more than the first. How much do the bat and both balls cost together?"}
-  - {id: hard-06, expect: frontier, query: "Explain why the halting problem is undecidable, with the diagonal argument written out step by step."}
-  - {id: hard-07, expect: frontier, query: "A train leaves at 9:40 at 72 km/h. A second train leaves the same station at 10:05 on the same track at 90 km/h. At what time and how far from the station does the second train catch up?"}
-  - {id: hard-08, expect: frontier, query: "Which statement about the Treaty of Westphalia (1648) is most accurate? A) It ended the Hundred Years' War B) It established the principle of state sovereignty in Europe C) It created the Holy Roman Empire D) It unified Italy"}
-  - {id: hard-09, expect: frontier, query: "Find all real x such that |x - 3| + |x + 1| = 6, and show your working."}
-  - {id: hard-10, expect: frontier, query: "A drug test is 99% sensitive and 95% specific. If 1% of people use the drug, what is the probability that someone who tests positive actually uses it?"}
+  # ---- 10 easy: Qwen right, kept on the Mac ----
+  - {id: easy-01, expect: local, qid: grade-school-math.dev.692,
+     query: "Edric's monthly salary is $576. If he works 8 hours a day for 6 days a week, how much is his hourly rate?",
+     note: "Track B: Qwen 3.0 (right), gold 3.0, GPT-4 right; score -9.3 vs tau 9.66"}
+  - {id: easy-02, expect: local, qid: grade-school-math.dev.2760,
+     query: "Joel is 5 years old and his dad is 32 years old. How old will Joel be when his dad is twice as old as him?",
+     note: "Track B: Qwen 27.0 (right), gold 27.0, GPT-4 right; score -38.0 vs tau 9.66"}
+  - {id: easy-03, expect: local, qid: grade-school-math.dev.4688,
+     query: "Emily bought a shirt and a coat for $600. What does the shirt cost if it is one-third the price of the coat?",
+     note: "Track B: Qwen 150.0 (right), gold 150.0, GPT-4 right; score -5.2 vs tau 9.66"}
+  - {id: easy-04, expect: local, qid: grade-school-math.dev.2825,
+     query: "A man owned 1/2 of a lot. He sold 1/10 of his share for the amount of $460. What is the worth of the entire lot?",
+     note: "Track B: Qwen 9200.0 (right), gold 9200.0, GPT-4 right; score -5.7 vs tau 9.66"}
+  - {id: easy-05, expect: local, qid: grade-school-math.dev.312,
+     query: "Farmer Brown raises emus, large birds. His flock has a total of 60 heads and legs. How many emus are in his flock?",
+     note: "Track B: Qwen 20.0 (right), gold 20.0, GPT-4 right; score -6.9 vs tau 9.66"}
+  - {id: easy-06, expect: local, qid: grade-school-math.dev.7189,
+     query: "There are 11 boys and 13 girls in a class. If 1 boy is added to the class, what percentage of the class are girls?",
+     note: "Track B: Qwen 52.0 (right), gold 52.0, GPT-4 right; score -5.7 vs tau 9.66"}
+  - {id: easy-07, expect: local, qid: mmlu-elementary-mathematics.val.307,
+     query: "What does the p equal in 3 + p = 15? A) 5 B) 18 C) 3 D) 12",
+     note: "Track B: Qwen D (right), gold D, GPT-4 right; score -9.3 vs tau 9.66"}
+  - {id: easy-08, expect: local, qid: mmlu-miscellaneous.val.346,
+     query: "The term \"Cold War\" refers to the A) competition between the Soviet Union and China for the resources of the Pacific Rim B) struggle between the United States and the Soviet Union to gain political hegemony in world affairs C) race between the United States and the Soviet Union to claim ownership of Antarctica D) contest between the United States and the European Union for economic domination in the West",
+     note: "Track B: Qwen B (right), gold B, GPT-4 right; score 8.0 vs tau 9.66"}
+  - {id: easy-09, expect: local, qid: mmlu-miscellaneous.val.412,
+     query: "During President Dwight Eisenhower's administration in the 1950s, the federal government promoted significant changes in transportation in the United States by A) funding the establishment of a national railroad passenger system B) sponsoring research to develop less polluting automobiles C) funding the construction of the interstate highway system D) establishing generous subsidies for urban mass transit",
+     note: "Track B: Qwen C (right), gold C, GPT-4 right; score 7.9 vs tau 9.66"}
+  - {id: easy-10, expect: local, qid: mmlu-us-foreign-policy.val.92,
+     query: "What was the 'Domino Theory'? A) The idea that the growth of democracy in one state would inexorably lead to its growth in others B) The idea that the Cold War operated according to the principles of game theory C) The idea that certain states were of higher value than others to the US during the Cold War D) The idea that the fall of one state to communism would inexorably lead to the fall of its neighbors",
+     note: "Track B: Qwen D (right), gold D, GPT-4 right; score 7.9 vs tau 9.66"}
 
-  # ---- 5 open chat: no fixed answer, either route is fine ----
+  # ---- 9 hard: Qwen wrong, sent to the frontier ----
+  - {id: hard-01, expect: frontier, qid: grade-school-math.dev.644,
+     query: "The city’s bus system carries 1,200,000 people each day. How many people does the bus system carry for 13 weeks?",
+     note: "Track B: Qwen 1352000.0 (wrong), gold 109200000.0, GPT-4 right; score 521.6 vs tau 9.66"}
+  - {id: hard-02, expect: frontier, qid: grade-school-math.dev.214,
+     query: "In 6 months Bella and Bob will be celebrating their 4th anniversary. How many months ago did they celebrate their 2nd anniversary?",
+     note: "Track B: Qwen 30.0 (wrong), gold 18.0, GPT-4 right; score 155.4 vs tau 9.66"}
+  - {id: hard-03, expect: frontier, qid: grade-school-math.dev.1884,
+     query: "Tom fills a 250 pound sandbag 80% full. But the filling material he is using is 40% heavier than sand. How much does the bag weigh?",
+     note: "Track B: Qwen 480.0 (wrong), gold 280.0, GPT-4 right; score 129.9 vs tau 9.66"}
+  - {id: hard-04, expect: frontier, qid: grade-school-math.dev.4921,
+     query: "Tyrone empties his piggy bank and finds two $1 bills, a $5 bill, 13 quarters, 20 dimes, 8 nickels, and 35 pennies. How much money does Tyrone have?",
+     note: "Track B: Qwen 12.0 (wrong), gold 13.0, GPT-4 right; score 125.8 vs tau 9.66"}
+  - {id: hard-05, expect: frontier, qid: grade-school-math.dev.867,
+     query: "Bob runs 6 miles per hour. His friend Jim runs at 9 miles per hour. If Bob has a 1 mile head-start, how many minutes will it take before Jim catches him?",
+     note: "Track B: Qwen 3.33 (wrong), gold 20.0, GPT-4 right; score 157.0 vs tau 9.66"}
+  - {id: hard-06, expect: frontier, qid: mmlu-miscellaneous.val.587,
+     query: "How many periods are there in an ice hockey game? A) Three B) Four C) One D) Two",
+     note: "Track B: Qwen D (wrong), gold A, GPT-4 right; score 128.3 vs tau 9.66"}
+  - {id: hard-07, expect: frontier, qid: mmlu-miscellaneous.val.243,
+     query: "What color is cartoon character Marge Simpson's hair? A) blue B) purple C) brown D) yellow",
+     note: "Track B: Qwen D (wrong), gold A, GPT-4 right; score 202.4 vs tau 9.66"}
+  - {id: hard-08, expect: frontier, qid: mmlu-elementary-mathematics.val.27,
+     query: "What is the quotient for the expression 2,314 / 4? A) 578 r2 B) 508 C) 508 r2 D) 578",
+     note: "Track B: Qwen C (wrong), gold A, GPT-4 right; score 74.8 vs tau 9.66"}
+  - {id: hard-09, expect: frontier, qid: mmlu-miscellaneous.val.138,
+     query: "Which of these is not found in a Snickers candy bar? A) chocolate B) almonds C) nougat D) caramel",
+     note: "Track B: Qwen A (wrong), gold B, GPT-4 right; score 230.5 vs tau 9.66"}
+
+  # ---- 4 free-form: not a certified question type; the page says so ----
+  - {id: free-01, expect: any, query: "What is the capital of Australia?"}
+  - {id: free-02, expect: any, query: "Who wrote 'Romeo and Juliet'?"}
+  - {id: free-03, expect: any, query: "Translate 'good morning' into French."}
+  - {id: free-04, expect: any, query: "Give me a synonym for 'happy'."}
+
+  # ---- 3 open chat: no fixed answer, either route is fine ----
   - {id: chat-01, expect: any, query: "Suggest three names for a study group that works on AI projects."}
   - {id: chat-02, expect: any, query: "Write a two-line poem about a rainy evening in Dehradun."}
-  - {id: chat-03, expect: any, query: "What are the pros and cons of running a language model on a laptop instead of in the cloud?"}
-  - {id: chat-04, expect: any, query: "Summarise what a model router does in one sentence for someone who is not technical."}
-  - {id: chat-05, expect: any, query: "Plan a 30-minute revision session for an operating systems exam."}
+  - {id: chat-03, expect: any, query: "Summarise what a model router does in one sentence for someone who is not technical."}

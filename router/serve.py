@@ -22,17 +22,26 @@ Everything loads once, at start-up. Model calls are serialised with a lock (one 
 """
 
 import json
+import re
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
 
-from router.bundle import RouterBundle
+from router import graders
+from router.bundle import Decision, RouterBundle
 from router.generate import Generation, GenerationCache, GenParams, build_prompt, cache_key
+from router.signals import mcq_prompt, option_signals, sample_signals, text_agreement_signals
 
 STATIC = Path(__file__).resolve().parent / "static"
+
+
+def option_answer(query: str, letter: str) -> str:
+    """'The answer is B) Mars.' from the option text in the question (just the letter if not found)."""
+    m = re.search(rf"(?:^|\s|\(){letter}[).:]\s*(.+?)(?=\s+\(?[A-J][).:]\s|$)", query, re.S)
+    return f"The answer is {letter})" + (f" {m.group(1).strip()}." if m else ".")
 
 
 def approx_tokens(text: str) -> int:
@@ -86,25 +95,65 @@ class Demo:
             "bundle": {k: v for k, v in self.bundle.meta.items() if k != "cal"},
         }
 
+    def _small_gen(self, prompt: str, params: GenParams, idx: int = 0) -> Generation:
+        """One local answer, from the cache when possible (call with self.lock held)."""
+        key = cache_key(self.small.name, prompt, params, idx)
+        hit = self.cache.get(key)
+        if hit is not None:
+            return hit
+        g = (self.small.generate_one(prompt, params, idx) if hasattr(self.small, "generate_one")
+             else self.small.generate_batch([prompt], params, [idx])[0])
+        if g.error is None and g.text is not None and not self.offline:
+            self.cache.put(key, self.small.name, idx, g)
+        return g
+
+    def _uses_signals(self) -> bool:
+        return getattr(self.bundle.featurizer, "name", "").startswith("cascade_t61")
+
+    def _signals_local(self, query: str) -> tuple[Decision, str, dict]:
+        """D-15: Qwen answers first and the router reads the confidence signals it was certified on.
+
+        multiple choice  one forward pass: option probabilities, exactly as Track B scored MMLU/ARC
+        arithmetic       k sampled answers with the Track B GSM8K prompt and sampling; agreement
+        anything else    k sampled brief answers, agreement of their final answers as text --
+                         NOT a question type the router was certified on, and labelled so
+        """
+        labels = graders.parse_options(query)
+        if len(labels) >= 2 and hasattr(self.small, "option_logprobs"):
+            scored = query if "Print only a single choice" in query else mcq_prompt(query, labels)
+            sig, letter = option_signals(self.small.option_logprobs(scored, labels))
+            d = self.bundle.decide(scored, signals=sig, source="mmlu")   # scored text: same token count as training
+            return d, option_answer(query, letter), {
+                "kind": "multiple choice", "certified": True, "signal": f"option probability {sig['p_chosen']:.2f}"}
+        k = int(self.bundle.meta.get("samples", 1))
+        sp = self.bundle.meta.get("sampling", {"temperature": 0.7, "top_p": 0.8})
+        params = replace(self.params, temperature=sp["temperature"], top_p=sp["top_p"])
+        arithmetic = re.search(r"\d", query) is not None
+        prompt = build_prompt("gsm8k" if arithmetic else self.prompt_style, query)
+        gens = [self._small_gen(prompt, params, j) for j in range(k)]
+        texts, lps, n_out = [g.text for g in gens], [g.mean_logprob for g in gens], [g.n_out for g in gens]
+        if arithmetic:
+            sig, _, shown = sample_signals(query, texts, lps, n_out)
+        else:
+            sig, shown = text_agreement_signals(texts, lps, n_out)
+        d = self.bundle.decide(query, signals=sig, source="gsm8k")
+        agree = f"{round(sig['agree'] * k)}/{k} answers agree" if k > 1 else f"mean log-prob {sig['lp_mean']:.2f}"
+        return d, texts[shown] or "", {"kind": "arithmetic" if arithmetic else "free-form",
+                                       "certified": arithmetic, "signal": agree}
+
+    def _answer_local_first(self, query: str) -> tuple[Decision, str, dict]:
+        """Cascade bundles: Qwen's answer, then the routing decision on it (call with self.lock held)."""
+        if self._uses_signals():
+            return self._signals_local(query)
+        gen_s = self._small_gen(build_prompt(self.prompt_style, query), self.params, 0)   # D-14 bundle (lane B)
+        return self.bundle.decide(query, response=gen_s, mean_logprob=gen_s.mean_logprob), gen_s.text or "", {}
+
     def route(self, query: str) -> dict:
         if getattr(self.bundle, "is_cascade", False):
-            prompt = build_prompt(self.prompt_style, query)
-            key = cache_key(self.small.name, prompt, self.params, 0)
             with self.lock:
-                hit = self.cache.get(key)
-                if hit is not None:
-                    gen_s = hit
-                else:
-                    if hasattr(self.small, "generate_one"):
-                        gen_s = self.small.generate_one(prompt, self.params)
-                    else:
-                        gen_s = self.small.generate_batch([prompt], self.params, [0])[0]
-                    if gen_s.error is None and gen_s.text is not None and not self.offline:
-                        self.cache.put(key, self.small.name, 0, gen_s)
-            d = self.bundle.decide(query, response=gen_s, mean_logprob=gen_s.mean_logprob)
-        else:
-            d = self.bundle.decide(query)
-        return d.as_dict()
+                d, _, extra = self._answer_local_first(query)
+            return {**d.as_dict(), **extra}
+        return self.bundle.decide(query).as_dict()
 
     def stream(self, query: str, force: str | None = None):
         """Yield ("route", dict), then ("token", str)..., then ("done", dict). Errors: ("error", str)."""
@@ -115,47 +164,24 @@ class Demo:
         hit = None
 
         if getattr(self.bundle, "is_cascade", False):
-            # Decision D-14: Cascade router runs the local small model S first (free on local Mac)
+            # D-14 / D-15: the local model answers first (free on the Mac); the router reads that answer
             if force == "frontier":
-                d = self.bundle.decide(query)
-                route = "frontier"
-                client = self.large
-                info = {**d.as_dict(), "route": route, "forced": True, "model": client.name}
-                yield "route", info
+                d = Decision("frontier", None, None, None, None, float(self.bundle.tau), self.bundle.rule, 0.0)
+                route, client = "frontier", self.large
+                yield "route", {**d.as_dict(), "route": route, "forced": True, "model": client.name}
             else:
-                key_small = cache_key(self.small.name, prompt, self.params, 0)
+                yield "status", {"message": f"{self.small.name} is answering on this Mac…"}
                 with self.lock:
-                    hit_small = self.cache.get(key_small)
-                    if hit_small is not None:
-                        gen_s = hit_small
-                    else:
-                        if hasattr(self.small, "generate_one"):
-                            gen_s = self.small.generate_one(prompt, self.params)
-                        else:
-                            gen_s = self.small.generate_batch([prompt], self.params, [0])[0]
-                        if gen_s.error is None and gen_s.text is not None and not self.offline:
-                            self.cache.put(key_small, self.small.name, 0, gen_s)
-
-                d = self.bundle.decide(query, response=gen_s, mean_logprob=gen_s.mean_logprob)
+                    d, local_text, extra = self._answer_local_first(query)
                 route = force if force in ("local", "frontier") else d.route
                 client = self.large if route == "frontier" else self.small
-                info = {
-                    **d.as_dict(),
-                    "route": route,
-                    "forced": route != d.route,
-                    "model": client.name,
-                    "escalated": route == "frontier",
-                }
-                yield "route", info
-
+                yield "route", {**d.as_dict(), **extra, "route": route, "forced": route != d.route,
+                                "model": client.name, "escalated": route == "frontier"}
                 if route == "local":
-                    # Keep local answer: yield decoded tokens directly
-                    answer_text = gen_s.text or ""
-                    for i in range(0, len(answer_text), 24):
+                    for i in range(0, len(local_text), 24):
                         first = first or (time.perf_counter() - t0) * 1000
-                        pieces.append(answer_text[i:i + 24])
-                        yield "token", answer_text[i:i + 24]
-                    hit = hit_small
+                        pieces.append(local_text[i:i + 24])
+                        yield "token", local_text[i:i + 24]
 
         else:
             # Query-only routing: decide on prompt text before generating
