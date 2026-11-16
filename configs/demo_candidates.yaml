@@ -1,0 +1,29 @@
+# T45 spare questions (2026-11-16). Track B test, release model: Qwen's 3 H100 answers all right, score far
+# below tau* 8.22. The M1 / M2 sample their own answers, so check them on the machine that runs the demo:
+#   python scripts/check_demo_set.py --demo-set configs/demo_candidates.yaml
+# and move any that come out 'local' into configs/demo_set.yaml.
+queries:
+  - {id: spare-01, expect: local, qid: grade-school-math.dev.6670,
+     query: "Three blue chips are in a jar which is 10% of the entire chips. If 50% of the chips are white and the rest are green, how many green chips are there?",
+     note: "Track B: Qwen 12, 3/3 agree (right), gold 12, GPT-4 right; score -15.2 vs tau* 8.22"}
+  - {id: spare-02, expect: local, qid: grade-school-math.dev.3598,
+     query: "Emma bought 3 dozens of macarons in addition to her 10 pieces of macarons for a party. If 15 pieces of macarons are left over, how many pieces of macarons were eaten?",
+     note: "Track B: Qwen 31, 3/3 agree (right), gold 31, GPT-4 right; score -15.0 vs tau* 8.22"}
+  - {id: spare-03, expect: local, qid: grade-school-math.dev.1069,
+     query: "Maria has 4 dimes, 4 quarters, and 7 nickels in her piggy bank. Her mom gives her 5 quarters. How much money, in dollars, does Maria have now?",
+     note: "Track B: Qwen 3, 3/3 agree (right), gold 3, GPT-4 right; score -14.3 vs tau* 8.22"}
+  - {id: spare-04, expect: local, qid: grade-school-math.dev.104,
+     query: "During one day, there are 4 boat trips through the lake. The boat can take up to 12 people during one trip. How many people can the boat transport in 2 days?",
+     note: "Track B: Qwen 96, 3/3 agree (right), gold 96, GPT-4 right; score -11.0 vs tau* 8.22"}
+  - {id: spare-05, expect: local, qid: grade-school-math.dev.6305,
+     query: "Delta, Beta and Gamma decided to share 40 donuts. Delta took 8 donuts and Beta took three times as many as Gamma. How many donuts did Gamma receive?",
+     note: "Track B: Qwen 8, 3/3 agree (right), gold 8, GPT-4 right; score -10.5 vs tau* 8.22"}
+  - {id: spare-06, expect: local, qid: grade-school-math.dev.5418,
+     query: "There are 480 zombies in the shopping mall. If the number of zombies doubled every day, how many days ago were there less than 50 zombies in the mall?",
+     note: "Track B: Qwen 4, 3/3 agree (right), gold 4, GPT-4 right; score -9.5 vs tau* 8.22"}
+  - {id: spare-07, expect: local, qid: grade-school-math.dev.985,
+     query: "James has an old printer that crumples every seventh page and blurs the ink on every third page. If he prints 42 pages, how many are neither crumpled or blurred?",
+     note: "Track B: Qwen 24, 3/3 agree (right), gold 24, GPT-4 right; score -9.4 vs tau* 8.22"}
+  - {id: spare-08, expect: local, qid: grade-school-math.dev.1106,
+     query: "The difference between the ages of two friends is 2 years. The sum of their ages is 74 years. Find the age of the older friend.",
+     note: "Track B: Qwen 38, 3/3 agree (right), gold 38, GPT-4 right; score -9.4 vs tau* 8.22"}

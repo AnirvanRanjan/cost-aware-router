@@ -52,3 +52,13 @@ chat-03   any       frontier       0.455  free-form: 1/3 answers agree [unc Summ
   release-model scores are far below tau* (−23.6, −16.5).
 - Free-form questions (not certified, labelled so): Canberra, bonjour and joyful stayed local with
   3/3 agreement; Shakespeare escalated at 2/3; all three chat prompts escalated (1/3).
+
+## Run 4 (same day): the two replacements
+
+Both failed on the M1: Andy/Rahim came out 2/3 agreement (escalated, though Qwen's answer was right)
+and the coal question 1/3 with a wrong answer (8; right is 80), so escalating it was correct. The
+H100's three samples agreeing does not guarantee the Mac's three will: the 4-bit model samples its
+own answers. Lesson: pick demo questions by running them on the machine that will run the demo.
+Both dropped (24 questions, 24/24 as planned); 8 spares in `configs/demo_candidates.yaml` to check
+on the M2. The Mac's answers are seeded and cached, so a checked question behaves the same on stage
+as long as the demo uses the same machine and cache.

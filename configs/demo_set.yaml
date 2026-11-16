@@ -7,11 +7,13 @@
 # its own answers, so a few decisions can differ live: swap out any that do, using the check's output.
 # Scores are from the release model (cascade_predictions.parquet), which the M1 bundle reproduces
 # (tau* 8.219). Run 3 (2026-11-16): 24/26; easy-05 (emus, 1/3 agree live) and easy-07 (3 + p = 15,
-# short multiple choice, score 20.7) replaced with arithmetic questions with wider margins.
+# short multiple choice, score 20.7) replaced. Run 4: both replacements failed too (the M1's answers
+# disagreed where the H100's agreed), so they are dropped; spares in configs/demo_candidates.yaml
+# must be checked on the demo machine before they are added.
 # free = question types the router was NOT certified on (labelled so on the page); chat = open-ended.
 queries:
 
-  # ---- 10 easy: Qwen right, kept on the Mac (7 arithmetic, 3 multiple choice) ----
+  # ---- 8 easy: Qwen right, kept on the Mac (5 arithmetic, 3 multiple choice) ----
   - {id: easy-01, expect: local, qid: grade-school-math.dev.692,
      query: "Edric's monthly salary is $576. If he works 8 hours a day for 6 days a week, how much is his hourly rate?",
      note: "Track B: Qwen 3, 3/3 agree (right), gold 3, GPT-4 right; score -9.6 vs tau* 8.22"}
@@ -24,15 +26,9 @@ queries:
   - {id: easy-04, expect: local, qid: grade-school-math.dev.2825,
      query: "A man owned 1/2 of a lot. He sold 1/10 of his share for the amount of $460. What is the worth of the entire lot?",
      note: "Track B: Qwen 9200, 3/3 agree (right), gold 9200, GPT-4 right; score -9.5 vs tau* 8.22"}
-  - {id: easy-05, expect: local, qid: grade-school-math.dev.844,
-     query: "In 5 years, Andy will be twice as old as Rahim is now. Rahim is 6 now. How much older is Andy than Rahim, right now, in years?",
-     note: "Track B: Qwen 1, 3/3 agree (right), gold 1, GPT-4 right; score -23.6 vs tau* 8.22"}
   - {id: easy-06, expect: local, qid: grade-school-math.dev.7189,
      query: "There are 11 boys and 13 girls in a class. If 1 boy is added to the class, what percentage of the class are girls?",
      note: "Track B: Qwen 52, 3/3 agree (right), gold 52, GPT-4 right; score -9.5 vs tau* 8.22"}
-  - {id: easy-07, expect: local, qid: grade-school-math.dev.3060,
-     query: "If it takes 10 people 10 days to shovel 10,000 pounds of coal, how many days will it take half of these ten people to shovel 40,000 pounds of coal?",
-     note: "Track B: Qwen 80, 3/3 agree (right), gold 80, GPT-4 right; score -16.5 vs tau* 8.22"}
   - {id: easy-08, expect: local, qid: mmlu-miscellaneous.val.346,
      query: "The term \"Cold War\" refers to the A) competition between the Soviet Union and China for the resources of the Pacific Rim B) struggle between the United States and the Soviet Union to gain political hegemony in world affairs C) race between the United States and the Soviet Union to claim ownership of Antarctica D) contest between the United States and the European Union for economic domination in the West",
      note: "Track B: Qwen B at p 1.00 (right), gold B, GPT-4 right; score 7.3 vs tau* 8.22"}
