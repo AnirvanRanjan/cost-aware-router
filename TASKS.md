@@ -98,7 +98,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T42 | D | `serve.py` running with Qwen (MLX) + Gemini on the M2: p99 7.6 ms with the interim bundle; re-run with B's final bundle (T41) | 🔶 |
 | T43 | D | Web page with real models: both routes verified on the M2; check Safari too | 🔶 |
 | T44 | C | Replay mode: 200 test questions through the live router, matches offline (PR #17) | ✅ merged; re-run with T41 |
-| T45 | A | Demo set (25 questions) checked against the final bundle (`scripts/check_demo_set.py`) | 🔶 draft; re-check with T41 |
+| T45 | A | Demo set (25 questions) checked against the final bundle (`scripts/check_demo_set.py`, now runs Qwen first for cascade bundles) | 🔶 script ready; run on the Mac with the cascade bundle |
 | T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | 🔶 code exists |
 | T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | ⬜ |
 | T48 | All | Backup video of the full demo | ⬜ |

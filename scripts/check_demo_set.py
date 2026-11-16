@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """T45: check every planned demo query against the router bundle BEFORE the demo.
 
-    python scripts/check_demo_set.py                         # artifacts/bundle/router.pkl
+    python scripts/check_demo_set.py                         # artifacts/bundle/router.pkl, Qwen on this Mac
     python scripts/check_demo_set.py --bundle other.pkl
+    python scripts/check_demo_set.py --fake                  # no MLX: canned answers, checks the plumbing only
 
 Reads configs/demo_set.yaml (each query has `expect: local | frontier | any`), routes every query
-with the bundle, and prints a table. Exits non-zero if any planned decision would surprise us on
-stage. Re-run after every new bundle (new features, Qwen-trained head, new tau*).
+exactly as the live server does, and prints a table. Exits non-zero if any planned decision would
+surprise us on stage. Re-run after every new bundle (new features, new tau*).
+
+Cascade bundles (D-14) decide on Qwen's own answer, so Qwen answers each query first, through the
+same code path as `serve.py` (`Demo.route`). Answers are cached in the demo's cache
+(artifacts/cache/demo.sqlite), so the check also warms the cache for the live demo; the frontier
+model is never called.
 """
 from __future__ import annotations
 
@@ -19,29 +25,56 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from router.bundle import RouterBundle  # noqa: E402
+from router.generate import FakeClient, GenerationCache, GenParams, build_prompt, cache_key, load_client  # noqa: E402
+from router.serve import Demo  # noqa: E402
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bundle", type=Path, default=Path("artifacts/bundle/router.pkl"))
     ap.add_argument("--demo-set", type=Path, default=Path("configs/demo_set.yaml"))
+    ap.add_argument("--small", default="qwen3.5-4b")
+    ap.add_argument("--max-tokens", type=int, default=512, help="must match serve_demo.py")
+    ap.add_argument("--cache", type=Path, default=None,
+                    help="answer cache (default: artifacts/cache/demo.sqlite, or demo_fake.sqlite with --fake)")
+    ap.add_argument("--fake", action="store_true", help="canned local answers (no MLX); for testing the script")
+    ap.add_argument("--out-md", type=Path, default=None, help="also write the table here (e.g. notes/demo_set_check.md)")
     args = ap.parse_args()
 
     if not args.bundle.exists():
-        sys.exit(f"no bundle at {args.bundle}: run scripts/11_build_bundle.py first")
+        sys.exit(f"no bundle at {args.bundle}: run scripts/11_build_bundle.py --mode cascade first")
     bundle = RouterBundle.load(args.bundle)
     items = yaml.safe_load(args.demo_set.read_text())["queries"]
+
+    small = FakeClient(args.small) if args.fake else (load_client(args.small) if bundle.is_cascade else None)
+    cache_path = args.cache or Path("artifacts/cache/demo_fake.sqlite" if args.fake else "artifacts/cache/demo.sqlite")
+    params = GenParams(max_tokens=args.max_tokens)
+    demo = Demo(bundle, small, FakeClient("frontier-not-called"), GenerationCache(cache_path), params=params)
+
+    kind = "cascade (Qwen answers first)" if bundle.is_cascade else "query-only"
+    lines = [f"tau* = {bundle.tau:.3f}, rule {bundle.rule}, {kind}" + (" [FAKE answers]" if args.fake else ""), "",
+             f"{'id':<10}{'expect':<10}{'got':<10}{'delta_hat':>10}{'lp':>7}  query  ->  local answer"]
     bad = 0
-    print(f"tau* = {bundle.tau:.3f}, rule {bundle.rule}\n")
-    print(f"{'id':<10}{'expect':<10}{'got':<10}{'delta_hat':>10}  query")
     for it in items:
-        d = bundle.decide(it["query"])
-        ok = it.get("expect", "any") in ("any", d.route)
+        q = it["query"]
+        d = demo.route(q)
+        ans, lp = "", float("nan")
+        if bundle.is_cascade:
+            g = demo.cache.get(cache_key(small.name, build_prompt(None, q), params, 0))
+            if g is not None:
+                ans = (g.text or "").strip().replace("\n", " ")
+                lp = g.mean_logprob if g.mean_logprob is not None else float("nan")
+        expect = it.get("expect", "any")
+        ok = expect in ("any", d["route"])
         bad += not ok
-        mark = "" if ok else "   <-- MISMATCH"
-        print(f"{it['id']:<10}{it.get('expect', 'any'):<10}{d.route:<10}{d.delta_hat:>10.3f}  "
-              f"{it['query'][:60].replace(chr(10), ' ')}{mark}")
-    print(f"\n{len(items) - bad}/{len(items)} as planned")
+        lines.append(f"{it['id']:<10}{expect:<10}{d['route']:<10}{d['delta_hat']:>10.3f}{lp:>7.2f}  "
+                     f"{q[:45]}" + (f"  ->  {ans[-50:]}" if ans else "") + ("" if ok else "   <-- MISMATCH"))
+    lines += ["", f"{len(items) - bad}/{len(items)} as planned"]
+    print("\n".join(lines))
+    if args.out_md:
+        args.out_md.write_text("# Demo set check (T45)\n\n*`python scripts/check_demo_set.py` on "
+                               f"`{args.bundle}`.*\n\n```\n" + "\n".join(lines) + "\n```\n")
+        print(f"wrote {args.out_md}")
     if bad:
         sys.exit(1)
 
