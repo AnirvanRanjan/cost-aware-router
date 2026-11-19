@@ -53,3 +53,5 @@ differ by up to 0.15 in predicted gap. Through the identical certification pipel
 certifications of their own fitted router; the thesis quotes the release file. Record the
 scikit-learn version with every predictions file, and build the demo bundle once, on the M2, from the
 release (the bundle is a pickle and is tied to that version).
+
+**Update 2026-11-19:** the version is the cause. Ani's M1 bundle was fitted with scikit-learn 1.8.0 and reproduces the release model (tau* 8.2187); the cloud refit and the M2 used 1.9.1 (tau* 9.657). `requirements.txt` now pins `scikit-learn==1.8.0`.
