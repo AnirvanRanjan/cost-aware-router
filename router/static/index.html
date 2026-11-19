@@ -34,6 +34,7 @@
   .badge.local { background: var(--local); } .badge.frontier { background: var(--frontier); }
   .decision { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0 10px; min-height: 28px; }
   .bars { display: grid; grid-template-columns: 70px 1fr 48px; gap: 6px 10px; align-items: center; font-size: 13px; }
+  .bars[hidden] { display: none; }
   .bar { position: relative; height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; }
   .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
   .bar.delta > b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--fg); }
