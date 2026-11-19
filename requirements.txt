@@ -4,7 +4,7 @@ pandas>=2.1
 pyarrow>=15
 pyyaml>=6
 pytest>=8
-scikit-learn>=1.4
+scikit-learn==1.8.0  # pin: bundle tau* depends on sklearn's HistGradientBoosting fit (1.9.1 refit gives tau* 9.66 vs 8.22)
 matplotlib>=3.8
 huggingface_hub>=0.24   # step 1: download RouterBench
 httpx>=0.27             # router/generate.py: OpenAI-compatible APIs (Gemini, GitHub Models)
