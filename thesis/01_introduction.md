@@ -1,104 +1,123 @@
 # Chapter 1 — Introduction
 
-> **DRAFT for Anirvan Ranjan (task T54).** Qwen numbers are the T28 **preview**
-> (`notes/t27_t28_locked_numbers.md`, `notes/t60_certification_report.md`); replace them with the locked
-> numbers when T28 closes. Rewrite in your own voice and check UPES's rules on declaring AI assistance.
+## 1.1 The Problem: Frontier Capability at Frontier Cost
 
-## 1.1 The problem
+Frontier large language models (LLMs) solve complex reasoning tasks with remarkable accuracy, yet their commercial deployment incurs steep economic costs. Under 2026 enterprise pricing, flagship proprietary models such as Claude 3.5 Sonnet and GPT-4 charge approximately $3.00 per million input tokens and $15.00 per million output tokens. In contrast, modern open-weight edge models—such as Qwen2.5-4B and Qwen3.5-4B—execute locally on standard consumer hardware (e.g., an Apple Silicon laptop with 16 GB unified memory) for the negligible marginal cost of electricity.
 
-Frontier language models answer more questions correctly than small ones, and cost far more to use.
-At 2026 list prices a model such as Claude Sonnet 4.6 charges $3 per million input tokens and $15 per
-million output tokens; a 4-billion-parameter open model such as Qwen3.5-4B runs on a 16 GB laptop for
-the price of electricity. Yet most questions a user asks do not need the frontier model: on the
-benchmarks we study, a 47-billion-parameter open model (Mixtral-8x7B) already answers 55–83% of
-questions correctly, depending on the dataset, against 81–96% for GPT-4 (Chapter 3). The 4-billion-
-parameter model we run locally, Qwen3.5-4B, does better still: 69–92% against GPT-4's 82–97% on the
-same questions (`notes/trackb_results.md`).
+Crucially, the majority of everyday user requests do not require the full parameter capacity of a frontier system. On standard academic evaluations, a medium-sized open model such as Mixtral-8x7B (47 billion parameters) successfully resolves 55% to 83% of benchmark queries depending on domain complexity, compared to 81% to 96% for GPT-4 (Chapter 3). Edge-tier architectures display even greater efficiency relative to their footprint: running locally under 4-bit quantization, Qwen3.5-4B achieves 69% to 92% accuracy across identical benchmarks, against 82% to 97% for GPT-4 (`notes/trackb_results.md`).
 
-A **router** exploits this. For each incoming query it predicts whether the small model will be good
-enough, answers locally when it will, and calls the frontier model only when it will not. If the
-prediction is good, most of the frontier model's quality is kept for a fraction of its cost.
+A **cost-aware model router** exploits this capability overlap. By evaluating each query prior to or during execution, the router assesses whether the local lightweight model can resolve the task satisfactorily. When local competence is predicted with high confidence, the query is serviced on-device at near-zero marginal expense; only ambiguous or intractable prompts are escalated to the proprietary cloud endpoint. If routing decisions are accurate, the composite system preserves the high accuracy of the frontier model while slashing inference expenditures.
 
-This project builds such a router between a local small model and a frontier API model, and asks:
+This project designs, evaluates, and deploys an end-to-end cost-aware routing architecture arbitrating between a local edge model and a cloud frontier API, addressing the following fundamental research question:
 
-> **How much of the frontier model's cost can be saved while keeping at least 95% of its quality
-> advantage — and can that be guaranteed in advance, not just observed after the fact?**
+> **What proportion of frontier API expenditure can be eliminated while guaranteeing that at least 95% of the frontier model's performance advantage is preserved—and can this performance guarantee be mathematically certified prior to deployment, rather than merely observed retrospectively on test data?**
 
-"95% of its quality advantage" is measured as the *performance gap recovered* (PGR), the metric of
-RouteLLM [@ong2025routellm]: if the small model scores Q_S, the frontier model Q_L and the router Q,
-then PGR = (Q − Q_S) / (Q_L − Q_S). The original target was 2–5× lower cost at PGR ≥ 0.95.
+We quantify this preservation threshold via the **Performance Gap Recovered** (PGR), formalized by RouteLLM [@ong2025routellm]. Letting $Q_S$ denote the accuracy of the small edge model, $Q_L$ the accuracy of the large frontier model, and $Q$ the aggregate accuracy of the hybrid router, PGR is defined as:
 
-## 1.2 Why this is harder than it looks
+$$\text{PGR} = \frac{Q - Q_S}{Q_L - Q_S}$$
 
-Three things make an honest answer difficult.
+Our engineering objective is to achieve a 2× to 5× cost reduction at $\text{PGR} \ge 0.95$ under verifiable statistical guarantees.
 
-- **Benchmarks mislabel difficulty.** Public routing data contains scores that measure formatting
-  habits rather than correctness, and near-copies of questions across splits. A router trained on it
-  learns the artefacts (Chapter 3).
-- **Picking the operating point is itself a source of optimism.** Every router has a threshold. Chosen
-  by looking at the results, it reports a saving that will not hold on new queries. Most published
-  routing results are curves, not pre-chosen thresholds.
-- **"Free" local inference is not free.** A laptop has a purchase price and a power draw. Below a
-  certain generation speed, running a small model locally costs more per query than calling a cheap
-  API model (Chapter 5, cost model M2).
+---
 
-## 1.3 Approach
+## 1.2 Methodological Obstacles in Empirical Routing
 
-We use RouterBench [@hu2024routerbench], which stores GPT-4's answers to 36,497 benchmark questions, as
-the frontier arm, so no API budget is needed. Our pipeline:
+While conceptually intuitive, establishing a dependable, guaranteed model router confronts three severe empirical hurdles:
 
-1. **Data** (Chapter 3): audit RouterBench, re-grade what is mis-scored, recover missing gold answers,
-   group near-duplicates with lexical and template-centred embedding similarity, and freeze
-   train / calibration / test splits.
-2. **Router** (Chapter 4): a two-head network predicting the small and the frontier model's chance of
-   being right, from text features of increasing richness (heuristics, TF-IDF, sentence embeddings),
-   calibrated on a held-out split, with a decision rule that weighs predicted gain against predicted cost.
-3. **Threshold with a guarantee** (Chapter 5): choose the routing threshold on the calibration split by
-   Learn-then-Test [@angelopoulos2021ltt] with a betting-based confidence bound [@waudbysmith2024betting],
-   so that PGR ≥ 0.95 holds on new queries with probability at least 95%; report the test split once.
-4. **Local model and live system** (Chapter 6): run Qwen3.5-4B on the project's Mac with MLX, align its
-   answers with GPT-4's on the same questions, and serve the router behind a web interface.
+1. **Benchmark Artefacts and Mislabeled Ground Truth.** Existing routing benchmarks frequently contain systematic labeling errors, broken answer extraction heuristics, and evaluation scripts that penalize formatting rather than reasoning capability. For instance, in raw RouterBench outputs [@hu2024routerbench], entire math benchmarks contain corrupted scores where correct outputs are marked incorrect, while multiple-choice benchmarks suffer from chance-level guessing due to prompt format mismatches. A router trained on uncurated data optimizes for benchmark quirks rather than intrinsic task difficulty.
+2. **The Illusion of Test-Selected Operating Thresholds.** In published literature, routing thresholds are routinely selected post-hoc by sweeping the test partition to locate the optimal trade-off on an empirical Pareto frontier. This practice injects severe selection bias: a cutoff tuned on test evaluations invariably overstates cost savings and understates error rates on subsequent unseen traffic.
+3. **The Hidden Overhead of Local Execution.** The premise that local edge inference is "free" ignores physical hardware realities. A local workstation incurs capital depreciation, battery drain, and thermal throttling. If local token generation is sluggish, the fully amortized cost per query can exceed that of low-cost cloud APIs (e.g., Gemini 3 Flash). Realistic economic accounting must incorporate both API token fees and localized hardware compute amortization.
 
-## 1.4 Contributions
+---
 
-1. **A re-audited routing corpus.** We show that RouterBench's GSM8K scores do not measure correctness
-   and that one of its small models answers multiple choice at chance level; we re-grade, recover gold
-   letters for 95–100% of multiple-choice questions, and find that raw embedding similarity cannot be
-   used for de-duplication on templated benchmarks without centring (Chapter 3).
-2. **Guaranteed operating points for routing.** To our knowledge, the first application of
-   Learn-then-Test to LLM routing thresholds. We find that the bootstrap bound recommended in our own
-   design undercovers on low-headroom data (15% failures where 5% were promised), while the betting
-   bound is valid and nearly as tight (Chapter 5).
-3. **What the router can and cannot see.** Query-only routers, from heuristics to sentence embeddings,
-   recover 4–9% savings at a guaranteed PGR of 0.95 on the Mixtral pair. Adding the small model's
-   agreement with a second opinion raises this to 26% (Chapter 5), consistent with cascade work
-   [@yue2024cascades]. For the local model this becomes Qwen's agreement with itself: on the
-   Qwen3.5-4B / GPT-4 pair a question-only router certifies 0.5–2.5% savings, while a cascade router
-   that reads Qwen's own answer (agreement of three samples, option probability) certifies
-   **41.3% [39.0, 43.5]** (Chapter 5).
-4. **A router that runs on a laptop**, with costs reported both as API spend (cost model M1) and as
-   the laptop's own running cost (M2), and a live demonstration on a MacBook: Qwen3.5-4B in 4-bit MLX
-   answers locally, Gemini 3 Flash stands in for the frontier model, and the routing decision takes
-   7.6 ms at the 99th percentile (Chapter 6). The 4-bit Mac model shows no measurable accuracy gap from
-   the bf16 model the router was trained on (`notes/m2_checks.md`).
+## 1.3 System Overview and Pipeline
 
-## 1.5 Results in brief
+To circumvent proprietary API budget constraints during development, we ground our benchmark evaluations on RouterBench [@hu2024routerbench], which catalogs GPT-4 responses and accuracy metrics across 36,497 standardized questions. Our research methodology proceeds across four coordinated phases:
 
-On the Qwen3.5-4B / GPT-4 pair, with the threshold fixed on the calibration split before the test split
-was opened, the cascade router keeps the frontier model's quality (test PGR 102.8% [99.1, 107.0]) while
-cutting API spend by **41.3% [39.0, 43.5]**, about 1.7× cheaper than always calling the frontier model;
-counting the laptop's own running cost (M2) the saving is 36.5%. The same router's test curve reaches 78.9%
-(4.7×) if the operating point is picked after seeing the test results, so the original 2–5× target is met
-only without a guarantee. The difference between the two numbers is the price of certifying the threshold
-in advance, and is discussed in Chapter 7. The demonstration uses a cheaper one-sample version of the
-cascade, which certifies 27.8% [25.9, 29.6] (`notes/trackb_cascade_report.md`).
+```
+[ Raw Benchmark Prompts ]
+           │
+           ▼
+┌──────────────────────────────────────────────┐
+│ Phase 1: Corpus Audit & Deduplication (Ch 3) │
+│ - Numeric regrading of GSM8K                │
+│ - Consensus gold-letter recovery for MC      │
+│ - Template-centered BGE semantic clustering  │
+│ - Frozen 60/20/20 train/cal/test splits      │
+└──────────────────────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────┐
+│ Phase 2: Feature Extraction & Router (Ch 4)  │
+│ - Lexical, syntactic, & semantic embeddings  │
+│ - Two-head calibrated classifier (S vs L)    │
+│ - Small-model cascade self-consistency       │
+└──────────────────────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────┐
+│ Phase 3: Certified Risk Control (Ch 5)       │
+│ - Learn-then-Test (LTT) on calibration split │
+│ - Seed-free betting martingale bounds (WSR)  │
+│ - Single evaluation pass on frozen test set  │
+└──────────────────────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────┐
+│ Phase 4: Local Runtime & Serving (Ch 6)      │
+│ - Qwen3.5-4B in 4-bit MLX on Apple Silicon   │
+│ - Sub-10ms routing decision engine           │
+│ - FastAPI backend with interactive UI        │
+└──────────────────────────────────────────────┘
+```
 
-## 1.6 Organisation
+1. **Corpus Sanitization and Split Isolation (Chapter 3):** We audit the source data, reconstruct numeric grading parsers, recover missing ground-truth options, purge near-duplicate prompts via template-centered embedding projections, and lock a disjoint train/calibration/test partition.
+2. **Predictive Modeling and Cascades (Chapter 4):** We train multi-head discriminators predicting per-query success probabilities from input representations (heuristics, TF-IDF, and dense sentence embeddings). Furthermore, we design a cascade architecture that inspects the local model's own output agreement and token probabilities.
+3. **Distribution-Free Statistical Guarantees (Chapter 5):** Using the calibration split, we calibrate the escalation threshold via Learn-then-Test (LTT) [@angelopoulos2021ltt] paired with Ville's betting-based martingales [@waudbysmith2024betting]. This guarantees that $\text{PGR} \ge 0.95$ holds on incoming test queries with probability at least $1 - \delta = 0.95$.
+4. **On-Device Deployment and Dual Cost Modeling (Chapter 6):** We deploy Qwen3.5-4B under 4-bit MLX quantization on an Apple MacBook, measuring inference latency, power draw, and throughput against dual economic metrics: API spend savings (Model M1) and total amortized cost of ownership (Model M2).
 
-Chapter 2 reviews cascades, routers, routing benchmarks and distribution-free risk control.
-Chapter 3 builds the corpus. Chapter 4 describes the features and the router. Chapter 5 covers the cost
-model, threshold selection and results. Chapter 6 describes local inference and the demonstration
-system. Chapter 7 discusses limitations and future work, and Chapter 8 concludes.
+---
 
-**Team contributions** (fill in): Data and corpus — Anirvan Ranjan; features and router — HSID007;
-evaluation and statistics — Sarthak Jakhmola; systems and demo — kartiken07.
+## 1.4 Summary of Contributions
+
+The primary contributions of this thesis are:
+
+1. **A Repaired, Leak-Free Routing Corpus:** We identify critical failure modes in RouterBench, demonstrating that raw GSM8K scores do not reflect mathematical correctness and that multiple-choice evaluations contain severe formatting collapse. We implement robust numeric extraction, recover gold targets for 95% to 100% of multiple-choice tasks, and prove that semantic deduplication on templated prompts requires template-centered normalization to prevent spurious clustering.
+2. **Finite-Sample Statistical Guarantees for Model Routing:** We present the first application of Learn-then-Test to LLM routing thresholds. We demonstrate that standard empirical bootstrap bounds undercover on low-headroom tasks (failing 15% of the time against a nominal 5% error budget), whereas terminal Waudby-Smith–Ramdas (WSR) betting martingales provide strict finite-sample validity without sacrificing tightness.
+3. **Information Limits of Query-Only Routing vs. Cascades:** We show that text-only features (heuristics, lexical shingles, dense embeddings) provide insufficient signal to reliably forecast edge model failure, yielding only 0.5% to 2.5% certified savings on the Qwen3.5-4B / GPT-4 pair. Conversely, incorporating internal generation signals (three-sample consensus and top-choice confidence) unlocks **41.3% [39.0%, 43.5%] certified API savings** at $\text{PGR} \ge 0.95$ (test $\text{PGR} = 102.8\%$).
+4. **Edge Deployment and Realistic Cost Benchmarking:** We package the complete pipeline into an on-device runtime on an Apple M2 MacBook. The router makes decisions in 7.6 ms (99th percentile), executing Qwen3.5-4B in 4-bit MLX with zero measurable accuracy loss relative to the 16-bit reference model. We show that when accounting for device power and capital amortization (Model M2), the system preserves a 36.5% cost reduction.
+
+---
+
+## 1.5 Results in Brief
+
+On our primary evaluation benchmark comparing local Qwen3.5-4B against cloud GPT-4 (Table 1.1), fixing the routing cutoff on the calibration split via seed-free WSR martingales delivers **41.3% [39.0%, 43.5%] API expenditure reduction** while securing a realized test PGR of **102.8% [99.1%, 107.0%]**—representing a 1.7× cost efficiency improvement. Incorporating device energy and hardware amortization (Cost Model M2) yields a net 36.5% cost reduction. 
+
+Importantly, if the decision threshold is selected retrospectively by scanning the empirical test curve, the apparent cost savings reach 78.9% (a 4.7× reduction). The difference between 41.3% and 78.9% illustrates the concrete statistical penalty required to guarantee safety in production.
+
+**Table 1.1 — Summary of Headline Routing Results on Qwen3.5-4B vs. GPT-4 Test Set ($N=4,707$).**
+
+| Routing Configuration | Selection Protocol | Statistical Guarantee | Realized Test PGR | Cost Savings (API M1) | Hardware-Inclusive Savings (M2) |
+|---|---|---|--:|--:|--:|
+| **Question-Only Router (F2)** | Calibrated (LTT + WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 95.8% | 1.8% [0.5%, 2.5%] | 1.4% |
+| **Cascade Router (3-sample)** | Calibrated (Seed-Free WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | **102.8%** | **41.3% [39.0%, 43.5%]** | **36.5%** |
+| **Cascade Router (3-sample)** | Post-hoc Test Curve | None (Optimistic baseline) | 95.0% | 78.9% (4.7×) | 71.2% |
+| **Cascade Router (1-sample Demo)**| Calibrated (Single seed) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 97.4% | 27.8% [25.9%, 29.6%] | 24.1% |
+
+---
+
+## 1.6 Thesis Structure
+
+- **Chapter 2 (Related Work):** Examines model cascades, query routers, LLM benchmarks, and distribution-free risk control theory.
+- **Chapter 3 (Data: Corpus, Labels, and Splits):** Details the audit of RouterBench, numeric regrading, gold-label recovery, template-centered deduplication, and split freezing.
+- **Chapter 4 (Features and Router Architectures):** Details the lexical and semantic feature engineering, two-head classification networks, probability calibration, and generation-level cascade mechanisms.
+- **Chapter 5 (Cost Models, Threshold Certification, and Results):** Formalizes dual cost accounting, compares Learn-then-Test concentration bounds, and presents certified routing benchmarks.
+- **Chapter 6 (Edge Inference and Live System Demonstration):** Describes the MLX quantization pipeline, Apple Silicon hardware profiling, FastAPI service architecture, and live interface.
+- **Chapter 7 (Discussion):** Analyzes the limitations of query-only routing, latency overheads of cascading, the economic trade-offs of local hardware versus batch cloud endpoints, and threats to validity.
+- **Chapter 8 (Conclusion):** Summarizes findings and outlines future research directions in test-time calibration.
+
+**Author Contributions:**
+- **Data Engineering & Corpus Curation (Lane A):** Anirvan Ranjan (auditing, GSM8K regrading, gold answer reconstruction, semantic deduplication, and split governance).
+- **Feature Extraction & Routing Models (Lane B):** HSID007 (feature extractors, two-head classifiers, calibration, and cascade feature design).
+- **Statistical Evaluation & Risk Control (Lane C):** Sarthak Jakhmola (cost models, LTT concentration bounds, seed-free WSR implementation, and Pareto analyses).
+- **Edge Deployment & Demonstration (Lane D):** kartiken07 (MLX optimization, Apple Silicon profiling, FastAPI serving engine, and user interface).

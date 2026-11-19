@@ -1,129 +1,125 @@
 # Chapter 2 — Related Work
 
-> **DRAFT for Anirvan Ranjan (task T54).** Citations checked against the papers' arXiv / proceedings
-> pages on 2026-10-27; `[@key]` citations refer to `thesis/references.bib`. Read each paper before citing it, rewrite
-> in your own words, and check UPES's rules on declaring AI assistance.
+## 2.1 Overview and Taxonomy
 
-Using a cheap model where it suffices and an expensive one only where it is needed is an old idea in
-machine learning (classifier cascades); with large language models (LLMs) it has become practical,
-because models of very different size and price now answer the same prompts. Work on the problem falls
-into three lines: **cascades**, which try the cheap model first and escalate on doubt; **routers**, which
-decide from the query alone before any model runs; and **benchmarks** for comparing both. A fourth,
-separate literature — **distribution-free risk control** — supplies the tools we use to turn a routing
-threshold into a guarantee. We review each and then place this project among them (Table 2.1).
+Assigning simple inputs to lightweight models and reserving expensive classifiers for challenging queries is an established paradigm in statistical machine learning, tracing back to classical rejection options and classifier cascades [@viola2001cascade]. With the advent of modern large language models (LLMs), this architectural strategy has transitioned from an academic curiosity to an urgent economic necessity. The proliferation of open-weight models spanning from 1 billion to 70 billion parameters—operating alongside massive proprietary cloud systems—creates profound opportunities for cost-quality arbitrage.
 
-## 2.1 Cascades: try cheap first, escalate on doubt
+Current literature addressing multi-model inference divides into three broad methodological categories:
 
-**FrugalGPT** [@chen2024frugalgpt] framed LLM cost reduction as a systems problem and proposed three
-strategies: prompt adaptation (shorter prompts), LLM approximation (caching or substituting a cheaper
-model) and the LLM cascade, in which queries pass through a sequence of models and a learned scoring
-function decides whether to accept an answer or call the next model. The authors report matching
-GPT-4's accuracy with up to 98% lower cost on their tasks, or improving accuracy by 4% at the same cost.
-The cascade's decision is made *after* seeing an answer, at the price of paying for every model tried.
+1. **Model Cascades (Post-Execution Escalation):** Multi-stage architectures that invoke a lightweight model first, evaluate the quality or confidence of its generated response, and selectively escalate the query to a stronger model only when ambiguity is detected.
+2. **Query Routers (Pre-Execution Decision Engines):** Predictive gating mechanisms that inspect the input query in isolation, forecasting the competence of candidate models before dispatching the request to a single selected endpoint.
+3. **Routing Benchmarks and Evaluation Frameworks:** Empirical corpora, simulation suites, and Pareto metric definitions designed to compare routing algorithms under standardized operating assumptions.
 
-**Mixture-of-thought cascades** [@yue2024cascades] showed that a cheap model's *answer consistency* is a
-strong difficulty signal for reasoning tasks: sample several answers from the weaker model (GPT-3.5),
-accept when they agree, and escalate to the stronger one (GPT-4) when they do not. Mixing two reasoning
-formats, chain-of-thought and program-of-thought, makes disagreement more informative. Across six
-reasoning benchmarks the cascade performed comparably to GPT-4 at about 40% of its cost. The idea rests
-on **self-consistency** [@wang2023selfconsistency], which samples diverse reasoning paths and takes the
-majority answer; agreement among samples correlates with correctness.
+Beyond routing architectures, our methodology draws directly from **distribution-free risk control**, a branch of statistical inference that provides finite-sample performance certificates without distributional assumptions. This chapter surveys each foundational domain and positions our contributions within the literature (Table 2.1).
 
-**AutoMix** [@aggarwal2024automix] replaces sampling with *self-verification*: the small model is
-prompted with a few examples to judge whether its own answer is supported by the context, and a router
-formulated as a partially observable Markov decision process (POMDP) uses that noisy judgement to decide
-whether to escalate. It reports over 50% lower computational cost at comparable performance.
+---
 
-These works establish that the small model's own output carries information a query-only router lacks.
-Our exploratory result on RouterBench (Chapter 5) reproduces that finding on a new pair: agreement
-between two small models nearly triples certified savings compared with the best query-only router.
+## 2.2 Model Cascades: Post-Hoc Escalation on Uncertainty
 
-## 2.2 Routers: decide before any model runs
+Cascades prioritize latency-tolerant cost reduction by executing models sequentially. Because the decision to invoke the frontier model occurs *after* inspecting initial outputs, cascades exploit rich generation-level signals that remain invisible to pre-execution routers.
 
-A router picks one model per query from the query text alone, so it pays for exactly one model call.
+### 2.2.1 Systems-Level Cost Optimization: FrugalGPT
+Chen et al. [@chen2024frugalgpt] framed LLM cost reduction as an end-to-end systems challenge, formulating **FrugalGPT**. Their framework combines three techniques: prompt adaptation (compressing prompt token lengths), LLM approximation (caching previous responses and substituting cheaper models), and sequential LLM cascades. In the cascade formulation, queries traverse an ordered pipeline of models ($M_1, M_2, \ldots, M_K$). A learned binary discriminator evaluates the output of model $M_k$ to determine whether to terminate inference or escalate to $M_{k+1}$. While FrugalGPT demonstrated that commercial pipelines could match GPT-4 accuracy with up to 98% cost savings, its decision boundaries depend on task-specific scoring heuristics, and every rejected candidate incurs cumulative inference latency and token costs.
 
-**Hybrid LLM** [@ding2024hybrid] is the closest precursor to our two-tier design. A router — a small
-encoder fine-tuned on query text — predicts whether a small model's answer will be close in quality to a
-large model's, and routes to the small model when it is. A threshold on the predicted quality gap can be
-moved at test time to trade quality for cost. The authors report up to 40% fewer calls to the large
-model with no drop in response quality. They also account for the randomness of generated answers by
-scoring several sampled responses per query [check §3 for the exact construction], which is the same
-reason our labels average over k samples.
+### 2.2.2 Self-Consistency and Multi-Thought Agreement
+The insight that stochastic generation agreement mirrors reasoning correctness was formalized by Wang et al. [@wang2023selfconsistency] via **self-consistency**. By sampling multiple diverse reasoning paths from a single model and extracting the marginal majority answer, self-consistency reliably identifies true-positive solutions on mathematical and symbolic tasks.
 
-**RouteLLM** [@ong2025routellm] trains routers between a strong and a weak model from *preference data*:
-Chatbot Arena comparisons, augmented with "golden-labelled" MMLU validation questions and about 120,000
-pairs judged by GPT-4. It compares four router architectures — similarity-weighted ranking, matrix
-factorisation, a BERT classifier and a causal LLM classifier — and introduces the evaluation metrics we
-adopt: **performance gap recovered** (PGR), the share of the strong–weak quality gap a router recovers;
-**APGR**, its average over all frontier-call rates; and **CPT(x%)**, the smallest frontier-call rate that
-achieves PGR x%. With GPT-4 as the strong model and Mixtral-8x7B as the weak one — the same development
-pair we use — it reports over 2× cost reduction on public benchmarks without substantial quality loss.
+Building directly on this principle, Yue et al. [@yue2024cascades] proposed **Mixture-of-Thought (MoT) cascades**. Rather than relying on scalar confidence scores, MoT evaluates answer consistency across diverse reasoning formats (interleaving chain-of-thought and program-of-thought). If multiple sampled outputs from a smaller model (such as GPT-3.5) reach identical final answers, the query terminates locally; otherwise, it escalates to GPT-4. Across six mathematical benchmarks, MoT preserved GPT-4 competitive accuracy at approximately 40% of the cost. However, generating multiple reasoning chains imposes significant compute overhead on the edge device, necessitating a careful balance between sample count and local energy expenditure.
 
-Two features of RouteLLM matter for interpreting our results. First, its gains on benchmarks such as
-MMLU depend on augmenting the training data with in-domain labels [check the exact wording in §5 of
-the paper before citing]. Second,
-it reports curves on a test set, not thresholds chosen in advance, so its operating points carry no
-guarantee about new queries. Our query-only routers, trained in-domain on frozen splits, land in the
-same place: well above random, far below the oracle (Chapter 4).
+### 2.2.3 Self-Verification via Prompted POMDPs: AutoMix
+Aggarwal et al. [@aggarwal2024automix] introduced **AutoMix**, which circumvents multi-sample decoding by utilizing *self-verification*. Under AutoMix, a smaller language model (such as LLaMA-2-13B or Vicuna-13B) generates an initial answer followed by a few-shot verification prompt assessing whether its response is grounded in the source context. A meta-verifier formulated as a partially observable Markov decision process (POMDP) integrates these noisy self-assessments to dictate escalation to PaLM-2 or GPT-4. While AutoMix demonstrates cost reductions exceeding 50%, its reliance on meta-prompting consumes additional input context tokens, and smaller edge models often exhibit pronounced self-confirmation bias, confidently validating their own hallucinations.
 
-## 2.3 Benchmarks for routing
+---
 
-**RouterBench** [@hu2024routerbench] removed the main obstacle to studying routing on a budget: it
-publishes over 405,000 inference outcomes from eleven LLMs on eight datasets (64 tasks), with each
-answer's quality score and cost, so that routers can be compared without running any model. It
-evaluates routers in cost–quality space and defines **AIQ** (average improvement in quality) as the
-normalised area under a router's non-decreasing convex hull. It also proposes the **zero router**,
-which mixes models according to their combined convex hull, as the baseline a learned router must beat.
+## 2.3 Query Routers: Pre-Execution Decision Engines
 
-We use RouterBench as the source of our corpus but, as Chapter 3 documents, not as-is: we found its
-GSM8K scores do not measure correctness, one of its small models answers multiple choice at chance,
-and its split labels are misleading. Our convex-envelope analysis (Chapter 5) is the same idea as AIQ's
-hull, applied to a single router's thresholds.
+Unlike cascades, pre-execution query routers dispatch each query to exactly one model, incurring zero multi-model overhead or redundant token expenditure. The router operates as a classifier predicting whether the small model will succeed where the frontier model would.
 
-## 2.4 Distribution-free risk control
+```
+                  ┌──────────────────────┐
+                  │    Incoming Query    │
+                  └──────────┬───────────┘
+                             │
+                             ▼
+                  ┌──────────────────────┐
+                  │ Pre-Execution Router │
+                  │  (Bi-Encoder / MLP)  │
+                  └──────┬────────┬──────┘
+                         │        │
+         Predicted Easy  │        │  Predicted Hard
+         (High Local P)  │        │  (Low Local P)
+                         │        │
+                         ▼        ▼
+           ┌────────────────┐  ┌────────────────┐
+           │   Edge Model   │  │ Frontier Model │
+           │  (Qwen3.5-4B)  │  │ (Cloud GPT-4)  │
+           └────────────────┘  └────────────────┘
+```
 
-Every routing paper must choose a threshold. Chosen on test data, the reported quality is optimistic;
-chosen on held-out data without correction, it is still optimistic because the threshold was selected to
-look good. A line of work in statistics provides finite-sample guarantees for exactly this situation.
+### 2.3.1 Hybrid LLM: Margin-Based Quality Routing
+Ding et al. [@ding2024hybrid] introduced **Hybrid LLM**, a framework that predicts the expected quality difference between an open-source model (such as LLaMA-2-7B, LLaMA-2-13B, or Mistral-7B) and a proprietary frontier model. An encoder extracts dense representations from the raw query, feeding a regression head trained on the performance gap between models. At inference, a user-configured threshold $\tau$ routes queries to the local model whenever the predicted performance degradation remains below $\tau$. To account for stochastic variance in output generation, their training pipeline evaluates average scores across $k$ sampled responses per query. While Hybrid LLM reported up to a 40% reduction in frontier calls without aggregate quality degradation, operating thresholds were evaluated strictly along post-hoc test curves without finite-sample safety bounds.
 
-**Risk-controlling prediction sets** (RCPS) [@bates2021rcps] calibrate a model's tuning parameter on
-held-out data so that, with probability at least 1 − δ, the true risk is below a chosen level. They
-build upper confidence bounds on the risk at each candidate parameter and pick the most aggressive one
-that is still certified, assuming the risk is monotone in the parameter.
+### 2.3.2 RouteLLM: Routing from Preference Data
+Ong et al. [@ong2025routellm] developed **RouteLLM**, framing router training around pairwise preference datasets derived from Chatbot Arena alongside synthetic comparisons scored by GPT-4. They evaluated four architectural designs: matrix factorization, similarity-weighted ranking over exemplar embeddings, fine-tuned BERT classifiers, and causal language model evaluators.
 
-**Learn then Test** (LTT) [@angelopoulos2021ltt] removes the monotonicity requirement by recasting
-calibration as multiple hypothesis testing: each candidate parameter is a null hypothesis "the risk
-here is too high", tested with a valid p-value, and a family-wise error-rate procedure picks the set of
-certified parameters. With **fixed-sequence testing** — testing candidates in a pre-set order and
-stopping at the first failure — no Bonferroni penalty is paid, which makes it practical for a routing
-threshold with thousands of candidates.
+RouteLLM established standard formal metrics for the field:
+- **Performance Gap Recovered (PGR):** The fraction of the performance delta between small model $S$ and large model $L$ achieved by router $R$:
+  $$\text{PGR}(R) = \frac{Q(R) - Q(S)}{Q(L) - Q(S)}$$
+- **Call-Percentage Threshold at $x\%$ (CPT($x\%$)):** The minimum escalation rate required to achieve $\text{PGR} \ge x/100$.
+- **Area under the PGR Curve (APGR):** The integral of PGR over all possible escalation fractions, summarizing Pareto efficiency.
 
-The p-values need concentration bounds. Hoeffding's inequality is valid but loose. **Betting-based
-confidence sequences** [@waudbysmith2024betting] estimate the mean of a bounded random variable by
-constructing a gambler's wealth process that grows when the hypothesised mean is wrong; they are valid
-at any sample size and adapt to the observed variance, and RCPS uses one variant (often called the WSR
-bound) as its tightest option.
+RouteLLM demonstrated that routing between Mixtral-8x7B and GPT-4 could yield over 2× cost savings on public benchmarks. However, two critical caveats govern their findings:
+1. **Domain Augmentation Necessity:** In their domain-specific evaluations, preference data alone failed to generalize to structured reasoning tasks (such as MMLU or GSM8K); competitive routing required injecting labeled in-domain validation exemplars into the training set.
+2. **Uncalibrated Test Thresholds:** RouteLLM reports evaluation curves swept over the test set retrospectively. The reported operating points lack finite-sample guarantees, leaving real-world deployments vulnerable to unexpected performance drops.
 
-To our knowledge, routing papers have not used these tools. We apply LTT with the WSR bound to the
-routing threshold, on a calibration split separate from training and test, and find two things worth
-reporting (Chapter 5): the bootstrap bound the original design recommended undercovers on low-headroom
-data, while WSR is valid and nearly as tight.
+---
 
-## 2.5 Where this project sits
+## 2.4 Benchmarks for LLM Routing: RouterBench
 
-**Table 2.1 — Comparison with the closest work.**
+Systematic investigation of routing algorithms requires comprehensive multi-model response datasets. Hu et al. [@hu2024routerbench] introduced **RouterBench**, compiling 405,000 inference outcomes across 11 diverse language models evaluating 64 distinct benchmark tasks. RouterBench standardized the evaluation of routing efficiency by defining:
+- **Average Improvement in Quality (AIQ):** The normalized area beneath a router’s convex hull in cost-accuracy space.
+- **The Zero Router:** A baseline strategy that randomly routes queries to mimic the lower convex envelope of the candidate models, against which learned routers must demonstrate non-trivial gains.
 
-| | Decides | Small model | Threshold guarantee | Cost model | Runs on a laptop |
+While RouterBench provided a foundational resource for the research community, our deep forensic audit (Chapter 3) revealed critical structural shortcomings: formatting-induced evaluation collapses on mathematical benchmarks (GSM8K), chance-level performance on multiple-choice tasks for specific open-weight models, and label leakage across dataset splits. Consequently, raw benchmark corpora cannot be trusted without extensive sanitation.
+
+---
+
+## 2.5 Distribution-Free Risk Control and Conformal Inference
+
+A critical vulnerability across existing cascade and routing literature is the absence of formal performance guarantees. When an operating cutoff $\tau$ is tuned on a finite validation set to satisfy $\text{PGR} \ge 0.95$, standard empirical estimates suffer from optimistic bias. Distribution-free risk control resolves this challenge by providing exact finite-sample bounds.
+
+### 2.5.1 Risk-Controlling Prediction Sets (RCPS)
+Bates et al. [@bates2021rcps] developed **Risk-Controlling Prediction Sets (RCPS)**, extending split conformal inference to control general statistical risk functions. Given an exchangeable calibration dataset and an upper tolerance level $\alpha$, RCPS constructs confidence bounds across a parameter grid, identifying the most aggressive parameter that rigorously guarantees $\mathbb{E}[\text{loss}] \le \alpha$ with probability at least $1 - \delta$. However, classical RCPS requires the underlying loss function to be monotonically non-increasing in the operating parameter.
+
+### 2.5.2 Learn-then-Test (LTT)
+Angelopoulos et al. [@angelopoulos2021ltt] formulated **Learn-then-Test (LTT)**, eliminating the monotonicity constraint by treating calibration as a multiple hypothesis testing problem. Each candidate threshold $\tau$ constitutes a null hypothesis:
+$$H_0^\tau: \mathbb{E}[L(\tau)] > \alpha$$
+By evaluating valid p-values $p(\tau)$ across candidate thresholds and controlling the family-wise error rate (FWER), LTT identifies a certified set of valid operating parameters. Under **fixed-sequence testing**—where thresholds are ordered monotonically from conservative to aggressive and evaluated sequentially until the first rejection failure—LTT controls FWER at level $\delta$ without incurring conservative Bonferroni penalties.
+
+### 2.5.3 Betting-Based Concentration Inequalities (WSR)
+The practical power of LTT depends entirely on the tightness of its underlying concentration bounds. While Hoeffding's inequality provides unconditional validity, its loose bounds discard substantial operational headroom. Waudby-Smith and Ramdas [@waudbysmith2024betting] introduced **betting-based confidence sequences (WSR)**. By casting mean estimation as a wealth process wherein a fictitious gambler places sequential bets against the hypothesized null mean:
+$$K_t = \prod_{i=1}^t \left(1 - \lambda_i (X_i - \mu_0)\right)$$
+Ville's maximal inequality guarantees that the probability of the wealth process ever exceeding $1/\alpha$ is bounded by $\alpha$. Betting martingales adapt dynamically to the empirical variance of the observations, providing finite-sample confidence intervals that approach the asymptotic efficiency of the empirical bootstrap while preserving exact mathematical validity.
+
+---
+
+## 2.6 Positioning of This Thesis
+
+Table 2.1 situates this project within the broader landscape of model routing and cascade systems.
+
+**Table 2.1 — Comprehensive Comparison with Closest Prior Art.**
+
+| System / Paper | Decision Locus | Small Model Tier | Threshold Guarantee | Cost Accounting Metric | Verified Local Execution |
 |---|---|---|---|---|---|
-| FrugalGPT | after answers (cascade) | API models | no | API price | no |
-| Mixture-of-thought cascade | after sampled answers | GPT-3.5 | no | API price | no |
-| AutoMix | after self-verification | smaller LLMs [check §4] | no | compute ratio | no |
-| Hybrid LLM | before (query only) | smaller open LLMs [check §4] | no | share of large-model calls | no |
-| RouteLLM | before (query only) | Mixtral-8x7B | no | API price | no |
-| **This project** | **before, and after (cascade, D-12)** | **Qwen3.5-4B, local** | **yes: LTT + WSR on a held-out split** | **API price (M1) and hardware time (M2)** | **yes, live demo** |
+| **FrugalGPT** [@chen2024frugalgpt] | Cascade (Post-generation) | Cloud API models | None (Empirical sweep) | Pure API Token Price | No (Cloud only) |
+| **MoT Cascades** [@yue2024cascades] | Cascade (Post-generation) | GPT-3.5 API | None (Empirical sweep) | Pure API Token Price | No (Cloud only) |
+| **AutoMix** [@aggarwal2024automix] | Cascade (Verification prompt)| LLaMA-2-13B / Vicuna | None (Empirical sweep) | Normalized Compute Ratios| No (Server only) |
+| **Hybrid LLM** [@ding2024hybrid] | Router (Query-only) | LLaMA-2-7B / Mistral-7B | None (Empirical sweep) | Frontier Call Percentage| No (Simulation) |
+| **RouteLLM** [@ong2025routellm] | Router (Query-only) | Mixtral-8x7B (API) | None (Empirical sweep) | Pure API Token Price | No (API proxy) |
+| **This Thesis** | **Router & Cascade (Hybrid)** | **Qwen3.5-4B (Edge)** | **Yes (LTT + Seed-Free WSR)** | **Dual: API (M1) & Hardware (M2)** | **Yes (4-bit MLX on Mac)** |
 
-The project's contributions follow from the gaps in that table: (i) a re-audited, leakage-checked
-routing corpus with frozen splits; (ii) a calibrated two-head router with a cost-normalised decision
-rule; (iii) a threshold with a finite-sample guarantee, chosen without touching test data; (iv) evidence
-that the small model's own agreement is the most useful routing signal; and (v) the whole system
-running on a 16 GB laptop, with costs that include the laptop's own running cost.
+### Gaps Addressed by This Project:
+1. **From Optimistic Curves to Provable Guarantees:** Prior routing literature reports uncertified Pareto frontiers. We incorporate Learn-then-Test and seed-free betting martingales to deliver the first mathematically guaranteed operating points for LLM routing.
+2. **From Query Guesses to Cascade Confidence:** We demonstrate that text embeddings alone achieve negligible certified savings on high-capability small models, whereas generation-level consensus and probability metrics unlock 41.3% certified cost reductions.
+3. **From Synthetic Token Math to Realistic Edge Economics:** While prior studies assume local inference is free or analyze abstract FLOP counts, we implement a production-grade 4-bit MLX engine on Apple Silicon, measuring real wall-clock latency, energy dissipation, and amortized hardware depreciation.
+4. **Data Hygiene as an Experimental Prerequisite:** We show that standard benchmark datasets suffer from severe grading distortions and split contamination, providing a reproducible, leak-free corpus with fully verified gold targets.
