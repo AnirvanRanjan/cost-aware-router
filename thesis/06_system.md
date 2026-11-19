@@ -218,8 +218,11 @@ frontier call was throttled were not cached, so an offline replay must skip thos
 ## 6.8 Limitations
 
 - **The free tier is a dependency.** The demo calls Gemini's free tier; the T47 soak hit its 20/day
-  cap and recorded 432 HTTP 429 errors within the hour. If it disappears or tightens mid-defence,
-  the offline mode of 6.7 is the fallback, and the cache must have been filled beforehand.
+  cap and recorded 432 HTTP 429 errors within the hour, so its frontier latency, spend and
+  savings figures are inclusive of those failures and throttled calls. For a live demo the API key
+  should have billing enabled (the cost is a few cents); if the service still disappears or
+  tightens mid-defence, the offline mode of 6.7 is the fallback and the cache must have been filled
+  beforehand.
 - **The demo set moves with the sampler.** The router reads Qwen's live answers, so a question's
   route can differ from the check's (21/24 on this machine). The check is re-run before every demo,
   and the spares are verified on the demo machine before they are added.

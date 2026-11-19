@@ -36,7 +36,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | **A** · Ani | Push; run T45 run 3 on the Mac with the D-15 bundle (`python scripts/11_build_bundle.py --mode cascade_t61 --samples 3`, then `python scripts/check_demo_set.py --out-md notes/demo_set_check_run3.md`). Rewrite ch. 1–3, 7–8 in your own words. | The demo set must pass before the video |
 | **B** · HSID | Review D-15: the demo now rebuilds your T61 `cascade_3sample` router (`--mode cascade_t61`, `router/signals.py`, tested against `16_trackb_preview.py`); your `--mode cascade` bundle stays as the D-14 comparison. Rewrite ch. 4 in your own words. | The demo router is yours |
 | **C** · Sarthak | Seed-free bound is now `select_tau(method="wsr_avg")` in `router/threshold.py` (ported from your script 17, identical p-values): check it. **T28**: lock numbers from the release file and record the scikit-learn version (a refit certifies 48.3%, the release file 41.3%: `notes/d15_demo_router.md`). Move `chapter_C_draft.md` to `thesis/05_results.md`. | The headline number is his |
-| **D** · Kartiken | Soak ✅, offline ✅, Safari ✅, ch. 6 draft ✅ (PR #22, merged). **Next:** `pip install scikit-learn==1.8.0` (the M2's 1.9.1 fits a different model: tau* 9.657, not the headline 8.2187), rebuild the bundle and re-check the demo set and the spares; turn on billing for the Gemini key (432 HTTP 429s in the soak); then T48 video; ch. 6 in your own words. | The demo is the one thing only the M2 can do |
+| **D** · Kartiken | Soak ✅, offline ✅, Safari ✅, sklearn 1.8.0 pinned on the M2 (tau* 8.219) ✅, demo set 24/24 on the M2 ✅. **Next:** turn on billing for the Gemini key and confirm; **T48** backup video; T55 fresh-clone check; ch. 6 in your own words. | The video is the critical path |
 
 ---
 
@@ -98,7 +98,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T42 | D | `serve.py` running with Qwen (MLX) + Gemini on the M2: p99 7.6 ms with the interim bundle; re-run with B's final bundle (T41) | ✅ D-15 bundle serving (tau*=9.657, T41 agreement 1.0); router p99 6 ms, max 17 ms in the T47 soak (`notes/demo_perf.md`) |
 | T43 | D | Web page with real models: both routes verified on the M2; check Safari too | ✅ both routes over SSE; Safari renders and populates (2026-11-18) |
 | T44 | C | Replay mode: 200 test questions through the live router, matches offline (PR #17) | ✅ merged; re-run with T41 |
-| T45 | A | Demo set checked against the final bundle (`scripts/check_demo_set.py`). Runs 1–2 failed on the D-14 bundle; v2 set from Track B test questions + D-15 bundle | 🔶 M1 (sklearn 1.8.0, tau* 8.219): 24/24 after run 4. M2 (sklearn 1.9.1, tau* 9.657): 21/24 (`notes/demo_set_check_m2.md`); re-check after the pin |
+| T45 | A | Demo set checked against the final bundle (`scripts/check_demo_set.py`) | ✅ 24/24 on the M2 (sklearn 1.8.0, tau* 8.219, `notes/demo_set_check_m2.md`); 9 easy, 8 hard (escalated because Qwen is unsure), 4 free-form, 3 chat |
 | T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | ✅ after the 2026-11-19 soak (48 frontier + 234 local rows): all 24 demo-set questions answer with `--offline`; replay queries throttled by the 20/day cap were not cached |
 | T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | ✅ 2026-11-19 14:22–15:22 IST: 929 queries, 432 HTTP 429s, router p99 6 ms, RSS 0.11→0.11 GB (`notes/demo_perf.md`) |
 | T48 | All | Backup video of the full demo | ⬜ |
