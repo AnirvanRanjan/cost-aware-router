@@ -33,7 +33,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | Who | Do this now | Why it can't wait |
 |---|---|---|
 | **All** | Vote on **D-15** (demo uses the T61 3-answer router; `notes/d15_demo_router.md`). Everyone: read ch. 1, 7, 8 for anything wrong about your lane. | D-15 decides what the M2 runs |
-| **A** · Ani | Push; run T45 run 3 on the Mac with the D-15 bundle (`python scripts/11_build_bundle.py --mode cascade_t61 --samples 3`, then `python scripts/check_demo_set.py --out-md notes/demo_set_check_run3.md`). Rewrite ch. 1–3, 7–8 in your own words; branch protection (T06). | The demo set must pass before the video |
+| **A** · Ani | Push; run T45 run 3 on the Mac with the D-15 bundle (`python scripts/11_build_bundle.py --mode cascade_t61 --samples 3`, then `python scripts/check_demo_set.py --out-md notes/demo_set_check_run3.md`). Rewrite ch. 1–3, 7–8 in your own words. | The demo set must pass before the video |
 | **B** · HSID | Review D-15: the demo now rebuilds your T61 `cascade_3sample` router (`--mode cascade_t61`, `router/signals.py`, tested against `16_trackb_preview.py`); your `--mode cascade` bundle stays as the D-14 comparison. Rewrite ch. 4 in your own words. | The demo router is yours |
 | **C** · Sarthak | Seed-free bound is now `select_tau(method="wsr_avg")` in `router/threshold.py` (ported from your script 17, identical p-values): check it. **T28**: lock numbers from the release file and record the scikit-learn version (a refit certifies 48.3%, the release file 41.3%: `notes/d15_demo_router.md`). Move `chapter_C_draft.md` to `thesis/05_results.md`. | The headline number is his |
 | **D** · Kartiken | Soak ✅, offline ✅, Safari ✅, ch. 6 draft ✅ (PR #22, merged). **Next:** `pip install scikit-learn==1.8.0` (the M2's 1.9.1 fits a different model: tau* 9.657, not the headline 8.2187), rebuild the bundle and re-check the demo set and the spares; turn on billing for the Gemini key (432 HTTP 429s in the soak); then T48 video; ch. 6 in your own words. | The demo is the one thing only the M2 can do |
@@ -49,7 +49,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T03 | A | Loader: RouterBench → corpus + scores, GSM8K re-graded | ✅ |
 | T04 | A | Near-duplicate grouping, both passes; **splits frozen** (D-11) | ✅ |
 | T05 | C | `estimate_spend.py`: measured vs estimated speeds labelled | ✅ |
-| T06 | D | `CODEOWNERS` + PR template ✅; branch protection on `main` ⬜ (Ani can do it in repo settings) | 🔶 |
+| T06 | D | `CODEOWNERS` + PR template ✅; branch protection on `main` ✅ (2026-11-19: no force-pushes, no deletion) | ✅ |
 | T07 | A | Gold answer letters for multiple choice | ✅ |
 
 ## Track A · Research result on RouterBench (Mixtral pair)
