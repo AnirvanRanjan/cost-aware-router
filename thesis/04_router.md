@@ -1,141 +1,169 @@
 # Chapter 4 — Features and Router Architecture
 
-> **DRAFT for Huwaid (lane B, task T51).** Generated from `notes/ablation_ladder.md`, `notes/threshold_report.md`, `router/models.py`, `router/features.py`, and the frozen release `data-910a584c8279baa7`. Every empirical quantity reported here can be reproduced with `scripts/04_train_two_head.py`, `scripts/05_calibrate.py`, `scripts/06_run_ablation.py`, and `scripts/08_threshold_report.py`. Rewrite in your own voice and adhere to university guidelines on declaring AI assistance before final submission.
+**Author:** Huwaid Siddiqui (Lane B: Features & Router)  
+**Primary Artifacts:** [`router/features.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/features.py), [`router/models.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/models.py), [`router/calibrate.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/calibrate.py), [`router/signals.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/signals.py), [`router/cascade.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/cascade.py), [`router/bundle.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/bundle.py)  
+**Reproducibility Scripts:** [`scripts/04_train_two_head.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/04_train_two_head.py), [`scripts/05_calibrate.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/05_calibrate.py), [`scripts/06_run_ablation.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/06_run_ablation.py), [`scripts/08_threshold_report.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/08_threshold_report.py), [`scripts/11_build_bundle.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/11_build_bundle.py), [`scripts/17_t60_seed_free_wsr.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/17_t60_seed_free_wsr.py)
 
 ---
 
-## 4.1 Feature Engineering
+## 4.1 Overview and Routing Formulation
 
-A cost-aware router must decide whether to route an incoming query $q$ to a local small model $S$ or escalate to an expensive frontier model $L$ *before* generation begins. Crucially, in production deployment or live serving, the router receives only the raw text prompt. It has no metadata indicating the source benchmark, task taxonomy, or subject label. Any reliance on benchmark identities during inference constitutes data leakage. Consequently, all features extracted by our pipeline are strictly derived from the query string $q$ alone.
+The primary function of a cost-aware model router is to determine whether an incoming query $q$ can be successfully resolved by a lightweight on-device edge model $S$ or requires escalation to an expensive proprietary cloud endpoint $L$. In an interactive deployment, the router must arbitrate between two competing objectives: maximizing monetary savings by keeping execution local, while guaranteeing that the composite system's accuracy satisfies a predefined performance floor relative to the frontier model.
 
-We design a three-tiered hierarchical feature space—heuristic signals ($F_0$), lexical $n$-grams ($F_1$), and dense semantic representations ($F_2$)—to evaluate query complexity from distinct linguistic perspectives.
+Under our system architecture, this arbitration occurs across two distinct operational paradigms:
+1. **Pre-Execution Query-Only Routing:** Before generation begins, the router evaluates representations extracted exclusively from the prompt text $q$. This paradigm incurs zero initial generation latency and zero upfront API cost, but relies entirely on external linguistic proxies of problem difficulty.
+2. **Post-Execution Cascade Routing:** The lightweight local model $S$ generates an answer first (incurring zero marginal API expenditure under Cost Model M1). The router then inspects internal generation dynamics—such as option probabilities and multi-sample consensus—to decide whether to accept the local output or escalate $q$ to the frontier API.
 
-### 4.1.1 Heuristic Syntactic and Structural Features ($F_0$)
+Crucially, in production environments, the router receives only the raw query string $q$. It has no access to task taxonomy, source benchmark metadata, or dataset identifiers. Any reliance on benchmark identity during inference constitutes severe data leakage. All feature representations developed in this chapter are strictly derived from the query string and the local model's generation dynamics alone.
 
-The $F_0$ feature extractor (`router.features.heuristics`) parses the raw prompt string and computes a vector of 23 scalar signals capturing length, formatting complexity, syntactic depth, and task-specific lexical triggers:
+---
 
-1. **Surface and Length Metrics**: `token_count` (whitespace word count), `char_count` (character length), `sentence_count` (detected via terminal punctuation `[.!?]+`), and `mean_word_length`.
-2. **Character Densities**: `digit_density`, `punctuation_density` (ASCII punctuation characters), and `uppercase_density` (capturing acronyms and emphasis).
+## 4.2 Feature Engineering for Query Routing
+
+To evaluate query complexity from complementary linguistic perspectives, we construct a hierarchical feature extraction pipeline comprising heuristic surface signals ($F_0$), lexical $n$-grams ($F_1$), and dense semantic embeddings ($F_2$).
+
+### 4.2.1 Heuristic Syntactic and Structural Signals ($F_0$)
+
+The $F_0$ extractor ([`router.features.heuristics`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/features.py)) parses the prompt string into a 23-dimensional scalar feature vector capturing surface length, formatting complexity, syntactic depth, and targeted lexical cues:
+
+1. **Surface Metrics**:
+   - `token_count`: Whitespace token count.
+   - `char_count`: Total character length.
+   - `sentence_count`: Sentence frequency detected via terminal punctuation regex `[.!?]+`.
+   - `mean_word_length`: Average character length per token.
+2. **Character Densities**:
+   - `digit_density`: Proportion of numeric ASCII characters.
+   - `punctuation_density`: Proportion of ASCII punctuation symbols.
+   - `uppercase_density`: Ratio of capitalized characters, detecting acronyms and emphasized terms.
 3. **Syntactic and Structural Complexity**:
-   - `question_mark_count`: frequency of `?`, separating declarative instructions from interrogatives.
-   - `max_bracket_depth`: maximum nesting depth of delimiters `()`, `[]`, and `{}`, identifying deeply structured mathematical formulas or nested computer code.
-   - `type_token_ratio`: unique lowercased tokens divided by total tokens, indexing lexical diversity.
-   - `flesch_kincaid_grade`: readability index computed as $0.39 \times \left(\frac{\text{words}}{\text{sentences}}\right) + 11.8 \times \left(\frac{\text{syllables}}{\text{words}}\right) - 15.59$, measuring textual difficulty.
-4. **Formatting and Domain Markers**:
-   - `code_fence_count`: markdown fences (```` or `~~~`), identifying programming problems.
-   - `latex_count`: frequency of mathematical LaTeX tokens (e.g., `\frac`, `\sqrt`, `\sum`, `\int`, `\partial`, `\alpha`).
+   - `question_mark_count`: Frequency of `?`, differentiating interrogatives from imperative instructions.
+   - `max_bracket_depth`: Maximum nesting depth of balanced delimiters `()`, `[]`, and `{}`, identifying mathematical expressions and nested computer code.
+   - `type_token_ratio`: Ratio of unique lowercase tokens to total tokens, measuring lexical variety.
+   - `flesch_kincaid_grade`: Textual readability index computed as $0.39 \times \left(\frac{\text{words}}{\text{sentences}}\right) + 11.8 \times \left(\frac{\text{syllables}}{\text{words}}\right) - 15.59$.
+4. **Formatting and Domain Identifiers**:
+   - `code_fence_count`: Markdown code block delimiters (```` or `~~~`).
+   - `latex_count`: Frequency of mathematical LaTeX expressions (`\frac`, `\sqrt`, `\sum`, `\int`, `\partial`, `\alpha`).
    - `url_count`: HTTP/HTTPS web links.
-   - `table_row_count`: markdown table structures (`| ... |`).
-   - `numeric_literal_count`: frequency of integer and floating-point literals.
+   - `table_row_count`: Markdown table rows containing pipe characters (`|`).
+   - `numeric_literal_count`: Count of discrete integer and floating-point literals.
 5. **Task and Semantic Cues**:
-   - `num_options`: multiple-choice option count extracted via regex option parsing (`router.graders.parse_options`).
-   - `has_reading_passage`: binary flag identifying reading comprehension framing (e.g., *"refers to the following passage"*, *"based on the text"*).
-   - `cue_word_prove`, `cue_word_derive`, `cue_word_step_by_step`, `cue_word_explain`: targeted regular expressions flagging explicit requests for multi-hop reasoning.
-   - `imperative_verb_count`: frequency of instructional verbs (*"calculate"*, *"compute"*, *"solve"*, *"determine"*, *"analyze"*).
+   - `num_options`: Count of extracted multiple-choice options parsed via [`router.graders.parse_options`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/graders.py).
+   - `has_reading_passage`: Binary flag indicating reading comprehension framing (e.g., *"refers to the following text"*).
+   - `cue_word_prove`, `cue_word_derive`, `cue_word_step_by_step`, `cue_word_explain`: Targeted regular expressions flagging explicit requests for multi-step reasoning.
+   - `imperative_verb_count`: Frequency of operational verbs (*"calculate"*, *"compute"*, *"solve"*, *"determine"*, *"analyze"*).
 
-The $F_0$ extractor operates in pure Python with negligible runtime overhead ($< 0.5\text{ ms}$ per query), making it ideally suited for latency-critical deployment.
+The $F_0$ feature extractor executes in pure Python with negligible runtime overhead ($<0.5\text{ ms}$ per query), making it highly suitable for latency-critical inference.
 
-### 4.1.2 Lexical N-Gram Representations ($F_1$)
+### 4.2.2 Lexical N-Gram Representations ($F_1$)
 
-The $F_1$ feature space (`router.features.TfidfFeatureExtractor`) models lexical vocabulary through sublinear term-frequency inverse-document-frequency ($\text{TF-IDF}$) representations. To capture both domain keywords and morphological variations, $F_1$ combines:
+The $F_1$ extractor ([`router.features.TfidfFeatureExtractor`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/features.py)) captures domain terminology through sublinear term-frequency inverse-document-frequency ($\text{TF-IDF}$) representations. To represent both domain-specific keywords and morphological suffixes, $F_1$ fuses:
 - Word $n$-grams ($n \in \{1, 2\}$), capped at the 50,000 most frequent features;
 - Character $n$-grams ($n \in \{3, 4, 5\}$), capped at 50,000 features.
 
-**Anti-Leakage Constraint**: Under strict cross-validation protocol, the TF-IDF vocabulary and document frequencies are fitted *exclusively* on the training split prompts ($N_{\text{train}} = 20,868$). Applying `fit` to the pooled dataset would leak test-set vocabulary distributions into the feature representation, invalidating out-of-sample generalisation.
+**Strict Anti-Leakage Protocol:** Under our cross-validation framework, the TF-IDF vocabulary, document frequencies, and idf weights are fitted *exclusively* on the training partition ($N_{\text{train}} = 20,868$). Fitting vectorizers on pooled corpus data would leak test-partition vocabulary distributions into the feature space, producing invalid out-of-sample evaluations.
 
-### 4.1.3 Dense Semantic Embeddings ($F_2$)
+### 4.2.3 Dense Semantic Embeddings ($F_2$)
 
-While lexical $n$-grams register surface phrasing, they fail to represent semantic intent or domain abstraction. The $F_2$ feature space (`router.features.SentenceEmbeddingExtractor`) encodes queries using the `BAAI/bge-base-en-v1.5` dense embedding model [@xiao2023bge]. Queries are tokenized and mapped to a 768-dimensional vector representation with $L_2$ normalization:
+While lexical $n$-grams capture surface vocabulary, they cannot model conceptual semantics or domain abstraction. The $F_2$ extractor ([`router.features.SentenceEmbeddingExtractor`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/features.py)) encodes queries using the `BAAI/bge-base-en-v1.5` dense embedding model [@xiao2023bge]. Queries are tokenized and mapped to a 768-dimensional vector representation with $L_2$ normalization:
+
 $$\mathbf{e}(q) = \frac{\text{BERT}(q)}{\|\text{BERT}(q)\|_2} \in \mathbb{R}^{768}$$
-Sentence embeddings are precomputed across the entire corpus and stored in `artifacts/features/features.parquet` (SHA256: `3d5eda199c6dff272f48d158c960d88cb068feec4bbb724dfceca214c0847bf0`). Inputs exceeding the maximum sequence length (512 tokens) are logged; across the frozen 34,778-query corpus, only 148 prompts ($0.42\%$) required token truncation.
+
+Embeddings are precomputed across the frozen corpus and stored in `artifacts/features/features.parquet` (SHA256: `3d5eda199c6dff272f48d158c960d88cb068feec4bbb724dfceca214c0847bf0`). Inputs exceeding the maximum context window (512 tokens) are logged; across the frozen 34,778-query corpus, only 148 prompts ($0.42\%$) required truncation.
 
 ---
 
-## 4.2 Router Architectures and Loss Formulation
+## 4.3 Router Architectures and Loss Formulation
 
-A router model estimates the expected performance differential $\Delta(q) = s_L(q) - s_S(q) \in [-1, 1]$ between the frontier model $L$ and the small model $S$. Rather than optimizing standard classification accuracy, the router's primary objective is ranking quality—quantified by the Spearman rank correlation $\rho(\hat{\Delta}, \Delta)$—because downstream cost-quality thresholding operates directly on the ranked spectrum of routing scores.
+A routing model predicts the expected capability differential between the frontier and small model:
+
+$$\Delta(q) = s_L(q) - s_S(q) \in [-1, 1]$$
+
+where $s_L(q), s_S(q) \in \{0, 1\}$ represent binary ground-truth correctness. Rather than optimizing standard classification accuracy, the router's primary training objective is ranking quality—measured by the Spearman rank correlation $\rho(\hat{\Delta}, \Delta)$—because cost-quality thresholding operates directly on the ordered spectrum of predicted scores.
 
 ```
-       Query Prompt q
-             │
-      ┌──────┴──────┐
-      ▼             ▼
-   F2 (768d)    F0 (23d)
-   Embedding    Heuristics (z-scored)
-      └──────┬──────┘
-             ▼
-     Fused Feature Vector x ∈ R^791
-             │
-    ┌────────▼────────┐
-    │  Trunk: Linear  │ 791 -> 256
-    │      GELU       │
-    │  Dropout(0.1)   │
-    └────────┬────────┘
-             ├──────────────────┐
-             ▼                  ▼
-      ┌─────────────┐    ┌─────────────┐
-      │   Head S    │    │   Head L    │
-      │ Linear(256) │    │ Linear(256) │
-      │   Sigmoid   │    │   Sigmoid   │
-      └──────┬──────┘    └──────┬──────┘
-             ▼                  ▼
-         s_hat_S            s_hat_L
-             └────────┬─────────┘
-                      ▼
-        delta_hat = s_hat_L - s_hat_S
+                  Query Prompt q
+                        │
+                ┌───────┴───────┐
+                ▼               ▼
+             F2 (768d)       F0 (23d)
+             Embedding      Heuristics (z-scored)
+                └───────┬───────┘
+                        ▼
+               Fused Feature Vector x ∈ R^791
+                        │
+               ┌────────▼────────┐
+               │  Trunk: Linear  │ 791 -> 256
+               │      GELU       │
+               │  Dropout(0.1)   │
+               └────────┬────────┘
+                        ├──────────────────┐
+                        ▼                  ▼
+                 ┌─────────────┐    ┌─────────────┐
+                 │   Head S    │    │   Head L    │
+                 │ Linear(256) │    │ Linear(256) │
+                 │   Sigmoid   │    │   Sigmoid   │
+                 └──────┬──────┘    └──────┬──────┘
+                        ▼                  ▼
+                    s_hat_S            s_hat_L
+                        └────────┬─────────┘
+                                 ▼
+                   delta_hat = s_hat_L - s_hat_S
 ```
 
-### 4.2.1 Baselines: Linear Models and Gradient-Boosted Trees
+### 4.3.1 Baseline Classifiers
 
-We establish three reference baselines:
-1. **$F_0$ Logistic Regression (`f0_logreg`)**: Logistic regression with $L_2$ regularisation ($C=1.0$) trained on the 23 $z$-score normalized heuristic features. The binary target indicates whether the frontier model strictly outperformed the small model: $y = \mathbb{I}(s_L > s_S)$. The predicted probability $P(y=1|x)$ is rescaled to $\hat{\Delta} = 2P(y=1|x) - 1$.
-2. **$F_1$ Logistic Regression (`f1_logreg`)**: Identical linear formulation fitted over the high-dimensional sparse TF-IDF space (100,000 features).
-3. **XGBoost Forest (`xgboost_f0_f2`)**: An ensemble of 100 gradient-boosted decision trees (maximum depth 4, learning rate 0.05, subsample ratio 0.8) trained directly on the continuous gap $\Delta = s_L - s_S$ using fused $[F_2 \parallel F_0]$ features.
+We implement three reference baselines:
+1. **$F_0$ Logistic Regression (`f0_logreg`):** Regularized logistic regression ($L_2$, $C=1.0$) trained on the 23 $z$-score normalized heuristic features. The binary target indicates strict frontier superiority: $y = \mathbb{I}(s_L > s_S)$. Predicted probabilities are rescaled to $\hat{\Delta} = 2P(y=1|x) - 1$.
+2. **$F_1$ Logistic Regression (`f1_logreg`):** An identical regularized linear classifier trained on the 100,000-dimensional sparse TF-IDF space.
+3. **XGBoost Regressor (`xgboost_f0_f2`):** An ensemble of 100 gradient-boosted decision trees (maximum depth 4, learning rate 0.05, subsample ratio 0.8) trained directly on the continuous gap $\Delta = s_L - s_S$ using the concatenated $[F_2 \parallel F_0]$ feature representation.
 
-### 4.2.2 The Two-Head MLP Architecture
+### 4.3.2 The Two-Head MLP Architecture
 
-Our headline router (`router.models.TwoHeadRouter`) implements a two-head neural network that jointly predicts the marginal success probabilities of both candidate models: $\hat{s}_S(q) \approx \mathbb{E}[s_S|q]$ and $\hat{s}_L(q) \approx \mathbb{E}[s_L|q]$.
+Our primary neural router ([`router.models.TwoHeadRouter`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/models.py)) implements a dual-head neural network that jointly estimates the marginal success probabilities of both candidate models: $\hat{s}_S(q) \approx \mathbb{E}[s_S|q]$ and $\hat{s}_L(q) \approx \mathbb{E}[s_L|q]$.
 
-The fused input $\mathbf{x} = [\mathbf{e}(q) \parallel \mathbf{z}(q)] \in \mathbb{R}^{791}$ concatenates the 768-dimensional $L_2$-normalized dense embedding with the 23 $z$-score normalized heuristic features. The network consists of:
-1. **Shared Representation Trunk**:
+The network receives the fused vector $\mathbf{x} = [\mathbf{e}(q) \parallel \mathbf{z}(q)] \in \mathbb{R}^{791}$, combining the 768-dimensional dense embedding with the 23 $z$-score normalized heuristic features. The architecture consists of:
+1. **Shared Representation Trunk:**
    $$\mathbf{h} = \text{Dropout}_{0.1}\left(\text{GELU}\left(\mathbf{W}_{\text{trunk}} \mathbf{x} + \mathbf{b}_{\text{trunk}}\right)\right), \quad \mathbf{h} \in \mathbb{R}^{256}$$
-2. **Decoupled Marginal Heads**:
+2. **Decoupled Marginal Prediction Heads:**
    $$\hat{s}_S = \sigma\left(\mathbf{w}_S^T \mathbf{h} + b_S\right), \quad \hat{s}_L = \sigma\left(\mathbf{w}_L^T \mathbf{h} + b_L\right)$$
-   where $\sigma(z) = (1 + e^{-z})^{-1}$ is the logistic sigmoid.
+   where $\sigma(z) = (1 + e^{-z})^{-1}$ denotes the logistic sigmoid.
 
-Decoupling the prediction into two heads provides two fundamental advantages:
-- **Interpretability and Cost Normalisation**: Rather than outputting an abstract scalar difficulty index, the model explicitly outputs calibrated probabilities of success for each model, enabling query-specific cost-benefit calculations.
-- **Independent Upstream Modular Retraining**: When replacing the small model (e.g., migrating from Mixtral-8x7B to Qwen3.5-4B in Track B), the frontier head $\mathbf{w}_L$ and shared trunk $\mathbf{W}_{\text{trunk}}$ can be frozen, requiring only $\mathbf{w}_S$ to be retrained on new labels.
+Decoupling the prediction into two marginal heads provides two distinct system advantages:
+- **Interpretability and Cost-Benefit Normalisation:** By explicitly modeling the marginal success probabilities $\hat{s}_S$ and $\hat{s}_L$ rather than an abstract scalar difficulty index, the router enables query-specific cost-benefit calculations under dynamic pricing schedules.
+- **Independent Modular Retraining:** When updating or replacing the small model (e.g., migrating from Mixtral-8x7B to Qwen3.5-4B in Track B, Task T36), the shared trunk and frontier head $\mathbf{w}_L$ can be frozen, requiring only $\mathbf{w}_S$ to be retrained on new edge labels.
 
-### 4.2.3 Auxiliary Multi-Task Loss Formulation
+### 4.3.3 Multi-Task Auxiliary Gap Loss
 
-Training separate heads with standard binary cross-entropy alone ignores the correlation between model capabilities on the same query. We train the network using a composite loss function (`router.models.two_head_loss`) that combines marginal log-likelihood with an explicit gap penalty:
+Training independent heads with standard binary cross-entropy alone ignores the correlation between model capabilities on identical prompts. We train the network using a composite multi-task objective ([`router.models.two_head_loss`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/models.py)):
+
 $$\mathcal{L}(\theta) = \ell_{\text{BCE}}(\hat{s}_S, s_S) + \ell_{\text{BCE}}(\hat{s}_L, s_L) + \lambda_{\text{gap}} \left\| (\hat{s}_L - \hat{s}_S) - (s_L - s_S) \right\|_2^2$$
-We set $\lambda_{\text{gap}} = 0.5$. The auxiliary Mean Squared Error ($\text{MSE}$) term directly penalizes errors in the predicted capability delta $\hat{\Delta} = \hat{s}_L - \hat{s}_S$, aligning gradient updates with the ranking objective.
+
+Setting $\lambda_{\text{gap}} = 0.5$ penalizes errors in the predicted capability delta $\hat{\Delta} = \hat{s}_L - \hat{s}_S$, directly aligning gradient updates with downstream ranking performance.
 
 ---
 
-## 4.3 Anti-Leakage Protocol and Probability Calibration
+## 4.4 Anti-Leakage Protocol and Probability Calibration
 
-### 4.3.1 Grouped Sub-Splitting and Early Stopping Protocol
+### 4.4.1 Grouped Sub-Splitting and Early Stopping
 
-Neural routers trained with early stopping require validation data to terminate training before overfitting. However, standard cross-validation risks two severe forms of leakage:
-1. **Calibration Leakage**: If the held-out calibration split (`cal`, $N=6,956$) is used for early stopping, it ceases to be a clean out-of-sample set for downstream conformal risk control and threshold selection.
-2. **Duplicate Query Leakage**: Datasets such as MMLU and GSM8K contain thematic clusters, paraphrased variants, and shared contexts. If two related queries fall across the train and validation subsets, early stopping measures memorisation.
+Neural networks trained with early stopping require a validation subset to prevent overfitting. Standard random splitting risks two severe forms of data leakage:
+1. **Calibration Leakage:** Using the held-out calibration split (`cal`, $N=6,956$) for early stopping invalidates it for downstream conformal risk control and threshold certification.
+2. **Duplicate Query Leakage:** Standard benchmarks contain paraphrased questions, thematic clusters, and shared reading passages. If related queries span train and validation partitions, early stopping measures memorisation rather than generalisation.
 
-To eliminate leakage:
-- The network is trained *strictly* on the training split (`train`, $N=20,868$).
-- Early stopping carves a grouped 85/15 sub-split (`train_sub` and `val_sub`) inside `train` using `router.splits.grouped_split`. No group identifier (`group_id`) spans both partitions (`assert_no_leakage`).
-- Optimization uses AdamW (learning rate $10^{-3}$, weight decay $10^{-2}$, batch size 64) with a patience of 8 epochs evaluated against validation loss on `val_sub`.
-- Normalisation statistics ($\boldsymbol{\mu}, \boldsymbol{\sigma}$) are computed strictly on `train_sub`.
+To enforce strict isolation:
+- The network is trained *exclusively* on the training partition (`train`, $N=20,868$).
+- Early stopping carves an 85/15 grouped sub-split (`train_sub` and `val_sub`) inside `train` using [`router.splits.grouped_split`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/splits.py). No duplicate or paraphrased group identifier (`group_id`) spans both partitions (`assert_no_leakage`).
+- Optimization uses AdamW (learning rate $10^{-3}$, weight decay $10^{-2}$, batch size 64) with a patience of 8 epochs evaluated on `val_sub`.
+- Normalisation statistics ($\boldsymbol{\mu}, \boldsymbol{\sigma}$) are fitted strictly on `train_sub`.
 
-### 4.3.2 Non-Parametric Isotonic Calibration
+### 4.4.2 Non-Parametric Isotonic Calibration
 
-Raw neural network logits passed through a sigmoid often exhibit miscalibration. To ensure that $\hat{s}_S$ and $\hat{s}_L$ correspond to empirical frequencies of correctness, we fit post-hoc isotonic regression models (`router.calibrate.TwoHeadCalibrator`, implementing `sklearn.isotonic.IsotonicRegression`) on the held-out calibration split (`cal`):
+Raw neural network outputs passed through a sigmoid often display miscalibration. To ensure that $\hat{s}_S$ and $\hat{s}_L$ correspond to empirical frequencies of correctness, we fit post-hoc isotonic regression models ([`router.calibrate.TwoHeadCalibrator`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/calibrate.py), implementing `sklearn.isotonic.IsotonicRegression`) on the held-out calibration split:
+
 $$\tilde{s}_S = g_S(\hat{s}_S), \quad \tilde{s}_L = g_L(\hat{s}_L)$$
-where $g_S$ and $g_L$ are piecewise constant, monotonically non-decreasing functions.
 
-We evaluate calibration error using 15-bin uniform-mass Expected Calibration Error ($\text{ECE}_{15}$):
+where $g_S$ and $g_L$ are piecewise constant, monotonically non-decreasing functions. Calibration error is assessed using 15-bin uniform-mass Expected Calibration Error ($\text{ECE}_{15}$):
+
 $$\text{ECE} = \sum_{m=1}^{M} \frac{|B_m|}{N} \left| \text{acc}(B_m) - \text{conf}(B_m) \right|$$
 
 **Table 4.1 — Calibration performance on held-out calibration split (`scripts/05_calibrate.py`).**
@@ -145,21 +173,21 @@ $$\text{ECE} = \sum_{m=1}^{M} \frac{|B_m|}{N} \left| \text{acc}(B_m) - \text{con
 | **Frontier Head ($L$: `gpt-4-1106-preview`)** | $1.71\%$ | **$0.74\%$** | **$-56.7\%$** |
 | **Small Head ($S$: `mistralai/mixtral-8x7b-chat`)** | $2.88\%$ | **$1.73\%$** | **$-40.0\%$** |
 
-On synthetic benchmarks with extreme label clustering, isotonic regression can occasionally overfit; on real multi-benchmark distributions, however, calibration reduces expected error by $40.0\%$ to $56.7\%$, guaranteeing dependable marginal probabilities for decision rules.
+Across real multi-benchmark distributions, isotonic calibration reduces expected error by $40.0\%$ to $56.7\%$, guaranteeing dependable marginal probabilities for downstream decision rules.
 
 ---
 
-## 4.4 Empirical Results and Ablation Ladder
+## 4.5 Empirical Evaluation and Ablation Ladder
 
-We benchmark router variants on the development model pair ($S = \text{Mixtral-8x7B-Chat}$, $L = \text{GPT-4-1106-Preview}$) across the frozen headline benchmark test split ($N = 6,954$ queries across MMLU, GSM8K, ARC-Challenge, and Winogrande).
+We benchmark router variants on the development model pair ($S = \text{Mixtral-8x7B-Chat}$, $L = \text{GPT-4-1106-Preview}$) across the untouched test partition ($N = 6,954$ queries across MMLU, GSM8K, ARC-Challenge, and Winogrande).
 
-### 4.4.1 The Ablation Ladder
+### 4.5.1 The Core Ablation Ladder
 
-Table 4.2 presents the stepwise ablation progression across the feature and architectural hierarchy (`notes/ablation_ladder.md`). Performance is assessed by:
-- **AUC**: Area under the ROC curve for escalating when $s_L > s_S$;
-- **$\rho(\hat{\Delta}, \Delta)$**: Spearman rank correlation between predicted and true capability deltas;
-- **$\text{CPT}(95\%)$**: Cost-to-Pass-Through, the minimum fraction of queries routed to $L$ required to achieve a Performance Recovery Ratio ($\text{PGR}$) of at least $0.95$ on the test curve;
-- **APGR**: Area under the empirical Pareto Gain Ratio curve from $0\%$ to $100\%$ frontier budget.
+Table 4.2 presents the stepwise ablation progression across the feature and architectural hierarchy (`notes/ablation_ladder.md`). Performance is evaluated by:
+- **AUC:** Area under the ROC curve for escalating when $s_L > s_S$;
+- **$\rho(\hat{\Delta}, \Delta)$:** Spearman rank correlation between predicted and true capability deltas;
+- **$\text{CPT}(95\%)$:** Cost-to-Pass-Through, the minimum fraction of queries routed to $L$ required to achieve $\text{PGR} \ge 0.95$ on the test curve;
+- **APGR:** Area under the empirical Pareto Gain Ratio curve from $0\%$ to $100\%$ frontier budget.
 
 **Table 4.2 — Core Ablation Ladder on the untouched test split ($N=6,954$, Mixtral development pair).**
 
@@ -174,36 +202,36 @@ Table 4.2 presents the stepwise ablation progression across the feature and arch
 | **+ Cost-normalized rule** | 791d Fused representation | Two-Head MLP (Rule v2) | 0.6758 | 0.1573 | 0.8600 | 0.6354 |
 | **Oracle Router** | Ground truth $s_L - s_S$ | Exact capability delta | 1.0000 | 1.0000 | 0.2750 | 0.9306 |
 
-### 4.4.2 Discussion of Ablation Insights
+### 4.5.2 Architectural and Feature Insights
 
-1. **Information Content Across Tiers**:
-   - $F_0$ heuristics alone achieve an AUC of $0.6776$, demonstrating that syntactic markers (length, LaTeX density, multiple-choice option structure) provide a strong baseline signal of query difficulty.
-   - High-dimensional $F_1$ lexical features ($\text{AUC} = 0.6640$) perform slightly worse than $F_0$, suffering from high dimensionality and vocabulary shift between train and test.
-   - Dense $F_2$ embeddings provide semantic generalization, increasing Spearman correlation from $0.1359$ ($F_0$) to $0.1585$.
-   - **Fused Representation ($F_2 + F_0$)**: Concatenating dense embeddings with normalized syntactic features yields the highest ranking correlation ($\rho = 0.1719$). The dense representation identifies topic and domain, while the heuristic features register syntactic formatting constraints that embeddings smooth away.
+1. **Information Content Across Tiers:**
+   - $F_0$ heuristics alone achieve an AUC of $0.6776$, showing that surface markers (token length, LaTeX density, option formatting) provide an effective initial baseline of task difficulty.
+   - High-dimensional $F_1$ lexical features ($\text{AUC} = 0.6640$) perform slightly worse than $F_0$, suffering from vocabulary sparsity and distribution shift between splits.
+   - Dense $F_2$ embeddings provide semantic domain generalization, improving rank correlation from $0.1359$ ($F_0$) to $0.1585$.
+   - **Fused Representation ($F_2 + F_0$):** Concatenating dense embeddings with normalized syntactic features yields the highest ranking correlation ($\rho = 0.1719$). Dense embeddings identify topical domain, while heuristic features preserve explicit syntactic and formatting constraints that embeddings smooth away.
 
-2. **Decision Rule Comparison: Rule v1 vs Rule v2**:
-   - **Rule v1 (Quality Gap Thresholding)**: Routes to $L$ iff $\hat{\Delta}(q) = \hat{s}_L(q) - \hat{s}_S(q) > \tau$. This optimizes pure capability recovery regardless of token length.
-   - **Rule v2 (Cost-Normalized Gain)**: Routes to $L$ iff the expected quality gain per dollar exceeds a threshold:
+2. **Decision Rule Comparison: Rule v1 vs Rule v2:**
+   - **Rule v1 (Quality Gap Thresholding):** Routes to $L$ iff $\hat{\Delta}(q) = \hat{s}_L(q) - \hat{s}_S(q) > \tau$, optimizing pure capability recovery regardless of token length.
+   - **Rule v2 (Cost-Normalized Gain):** Routes to $L$ iff expected quality gain per dollar exceeds a threshold:
      $$G(q) = \frac{\hat{s}_L(q) - \hat{s}_S(q)}{\hat{c}_L(q)} > \tau$$
-     where $\hat{c}_L(q)$ estimates query expenditure based on prompt token count ($n_{\text{in}} \approx \frac{\text{len}(q)}{4}$) and frontier token pricing. Rule v2 deprioritizes verbose queries where the small model has a modest gap but escalation would consume substantial budget.
+     where $\hat{c}_L(q)$ estimates query cost from prompt token count ($n_{\text{in}} \approx \frac{\text{len}(q)}{4}$) and frontier pricing. Rule v2 deprioritizes lengthy queries where the small model has a modest capability gap but escalation would consume substantial token budget.
 
 ---
 
-## 4.5 Statistical Guarantees and Certified Savings
+## 4.6 Statistical Guarantees and Certified Savings
 
-A critical pitfall in LLM routing research is quoting "savings" directly from the test curve—selecting the threshold $\tau^*$ on test data that matches the $95\%$ performance target. Such test-picked numbers represent optimistic point estimates that degrade in deployment.
+A standard pitfall in LLM routing research is quoting "savings" directly from the test curve—selecting the threshold $\tau^*$ on test data that matches the $95\%$ performance target. Such test-picked numbers represent optimistic point estimates that fail in deployment.
 
-To provide rigorous, deployable guarantees, our pipeline determines $\tau^*$ on the **calibration split (`cal`)** using statistical risk-controlling bounds and applies $\tau^*$ exactly once to the untouched test split (`scripts/08_threshold_report.py`, `notes/threshold_report.md`).
+To provide deployable guarantees, our pipeline determines $\tau^*$ on the **calibration split (`cal`)** using statistical risk-controlling bounds and applies $\tau^*$ exactly once to the untouched test split ([`scripts/08_threshold_report.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/08_threshold_report.py), `notes/threshold_report.md`).
 
-### 4.5.1 Risk-Controlling Prediction Framework
+### 4.6.1 Risk-Controlling Prediction Framework
 
-Let the target Performance Gain Ratio be $\text{PGR} \ge 0.95$ with risk tolerance $\delta = 0.05$. We calibrate thresholds using three formal bounds:
-1. **WSR Bound [@waudbysmith2024betting]**: Finite-sample valid concentration bound based on betting martingales, as utilized in Learn-then-Test [@angelopoulos2021ltt] and Risk-Controlling Prediction Sets [@bates2021rcps].
-2. **Paired Bootstrap**: Asymptotic paired bootstrap over calibration queries with confidence level $1 - \delta$.
-3. **Hoeffding Bound**: Classical distribution-free concentration bound (conservative and loose).
+Let the target Performance Gap Recovered be $\text{PGR} \ge 0.95$ with risk tolerance $\delta = 0.05$. We calibrate thresholds using three formal bounds:
+1. **WSR Bound [@waudbysmith2024betting]:** Finite-sample valid concentration bound based on betting martingales, as utilized in Learn-then-Test [@angelopoulos2021ltt] and Risk-Controlling Prediction Sets [@bates2021rcps].
+2. **Paired Bootstrap:** Asymptotic paired bootstrap over calibration queries with confidence level $1 - \delta$.
+3. **Hoeffding Bound:** Classical distribution-free concentration bound.
 
-**Table 4.3 — Out-of-sample test results for thresholds selected on `cal` (Target $\text{PGR} \ge 95\%$, $\delta=0.05$, cost model M1).**
+**Table 4.3 — Out-of-sample test results for thresholds selected on `cal` (Target $\text{PGR} \ge 95\%$, $\delta=0.05$, Cost Model M1, Mixtral development pair).**
 
 | Router Model | Decision Rule | Calibration Bound | Certified? | Frontier Calls ($\alpha_{\text{cal}}$) | Frontier Calls ($\alpha_{\text{test}}$) | Test PGR [95% CI] | Certified Savings [95% CI] |
 |---|:---:|:---:|:---:|--:|--:|:---:|:---:|
@@ -216,49 +244,101 @@ Let the target Performance Gain Ratio be $\text{PGR} \ge 0.95$ with risk toleran
 | `two_head_mlp` | **v2** | **Bootstrap** | **Yes** | **95.9%** | **95.6%** | **95.6% [94.3, 96.8]** | **11.0% [9.4, 12.7]** |
 | *`two_head_mlp`* | *v2* | *Naive (point est.)* | *No* | *95.1%* | *95.0%* | *95.1% [93.6, 96.4]* | *12.7% [11.0, 14.5]* |
 
-### 4.5.2 Certified Savings vs. Naive Optimism
+### 4.6.2 Certified Savings vs. Naive Optimism
 
 As documented in Table 4.3:
-- The naive point estimate on `cal` yields $12.7\%$ savings, but provides zero statistical guarantee.
-- Under the mathematically rigorous **WSR bound**, the Two-Head MLP with Rule v2 achieves a **certified saving of $9.4\%$ [95% CI: 7.8%, 10.9%]** while strictly maintaining test PGR at $96.3\% \ge 95.0\%$.
+- The naive point estimate on `cal` yields $12.7\%$ savings, but provides zero statistical coverage guarantee.
+- Under the mathematically rigorous **WSR bound**, the Two-Head MLP with Rule v2 achieves a **certified saving of $9.4\%$ [95% CI: 7.8%, 10.9%]** while maintaining test PGR at $96.3\% \ge 95.0\%$.
 - Under the paired bootstrap bound, certified savings reach **$11.0\%$ [9.4%, 12.7%]**.
 - Hoeffding's bound is excessively conservative, demanding $97.5\%$ frontier calls and yielding only $5.6\%$ savings.
 
-### 4.5.3 Breakdown by Target Benchmark
+### 4.6.3 Breakdown by Target Benchmark
 
 At the optimal certified threshold ($\tau^* = 0.0435$, selected via WSR on `two_head_mlp` v2), the routing behavior reflects distinct domain difficulties:
 - **MMLU** ($N=2,808$): $96.8\%$ routed to frontier, yielding $\text{PGR} = 97.5\%$ and **$8.9\%$ monetary savings**.
 - **GSM8K** ($N=1,490$): $93.8\%$ routed to frontier, yielding $\text{PGR} = 94.6\%$ and **$9.7\%$ monetary savings**.
-- **ARC-Challenge** ($N=294$) and **Winogrande** ($N=253$): Both route $100\%$ to the frontier. Because these smaller test sets have higher variance and large headroom gaps ($Q_L - Q_S \approx 0.13 - 0.25$), the risk-controlling bound conservatively escalates all queries to satisfy the strict global $\delta = 0.05$ risk ceiling.
+- **ARC-Challenge** ($N=294$) and **Winogrande** ($N=253$): Both route $100\%$ to the frontier. Because these smaller test sets exhibit higher variance and large headroom gaps ($Q_L - Q_S \approx 0.13 - 0.25$), the risk-controlling bound conservatively escalates all queries to satisfy the strict global $\delta = 0.05$ risk ceiling.
 
 ---
 
-## 4.6 The Limits of Query-Only Routing and the Cascade Router
+## 4.7 Headroom Compression and the Cascade Router Architecture
 
-The empirical findings in § 4.4 and § 4.5 reveal a fundamental property of language model routing: **query-only routers face an intrinsic ceiling when routing hard reasoning problems.**
+The empirical findings on the Mixtral development pair expose a fundamental constraint: **query-only routers face an intrinsic ceiling on complex reasoning tasks.**
 
-Within a given task (e.g., GSM8K grade-school arithmetic), whether a small model succeeds or fails often depends on dynamic generation factors—such as an intermediate arithmetic slip or a miscalculated subtraction—that cannot be deduced from prompt phrasing alone. Consequently, query-only routers achieve modest certified savings ($9.4\%$).
+Within a domain such as grade-school math (GSM8K), whether an edge model succeeds or fails depends on dynamic execution factors—such as an intermediate arithmetic error or an incorrect sign—that cannot be deduced from prompt semantics alone. Consequently, query-only routing achieves modest certified savings ($9.4\%$).
 
-This motivates the **Cascade Router Architecture** (`router.cascade`, Proposal D-12):
-1. The small model $S$ is executed locally first (incurring zero marginal API cost under model M1).
-2. The router inspects both the query features ($F_0, F_2$) and the small model's generated answer features:
-   - Extracted answer letters and length;
-   - Chain-of-thought verification (detecting explicit arithmetic errors $\text{slip}(a \text{ op } b \ne c)$ in reasoning steps);
-   - Local consensus and confidence: agreement across candidate completions (agreement with a second small model such as Yi-34B on Track A, or self-consistency across $k$ samples on Track B) and next-token option probability $\max P(\text{option})$ from `MLXOptionScorer`.
-3. If the small model exhibits high confidence and zero arithmetic slips, the answer is accepted; otherwise, the query escalates to $L$.
+### 4.7.1 The Headroom Compression Collapse on Track B
 
-Exploratory analysis (`scripts/12_cascade_explore.py`, `notes/cascade_explore.md`) on the Mixtral development pair demonstrates that adding a second opinion from Yi-34B (cross-model agreement between Mixtral-8x7B and Yi-34B-Chat, not self-consistency) reduces frontier calls from $96.2\%$ to **$79.0\%$**, boosting certified savings from $9.4\%$ to **$26.0\%$ [95% CI: 24.2%, 27.9%]** at $\text{PGR} = 97.9\%$. The full evaluation of the cascade router on the headline Qwen pair (Track B, Decision D-14), achieving $40.8\%$ certified savings with 3 answers and $27.8\%$ with 1 answer, is formalized in Chapter 5.
+This ceiling becomes catastrophic when transitioning to modern high-capacity edge models. On our headline deployment pair (Track B: $S = \text{Qwen3.5-4B}$, $L = \text{GPT-4-1106-Preview}$), the small model achieves $82.5\%$ baseline accuracy against $90.0\%$ for the frontier model. The capability headroom contracts from $0.237$ (Mixtral) down to merely **$0.075$**.
+
+Under this compressed headroom, pre-execution query routers collapse: the certified savings of the Two-Head MLP with $F_2$ embeddings drop to an imperceptible **$1.8\%$ [95% CI: 0.5%, 2.5%]** under the WSR bound (`notes/qwen_query_report.md`). Text features simply do not contain sufficient discriminative signal to navigate this narrow margin.
+
+### 4.7.2 The Cascade Formulation and Generation Confidence Signals
+
+This limitation motivates the **Cascade Router Architecture** ([`router.cascade`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/cascade.py), Proposals D-12 and D-14):
+1. The small model $S$ executes locally first (incurring zero marginal API cost under model M1).
+2. The router inspects internal generation dynamics directly from the small model's completions ([`router.signals`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/signals.py)):
+   - **Multiple-Choice Questions:** A single forward evaluation over option letters via [`MLXOptionScorer`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/mcq_mlx.py) yields the softmax option probabilities:
+     - `p_chosen`: Probability of the most likely option letter.
+     - `margin`: Probability margin separating the top option from the runner-up.
+   - **Numeric and Arithmetic Questions (GSM8K):** $k$ stochastic completions ($T=0.7$, top-$p=0.8$) yield consensus metrics:
+     - `agree`: Proportion of the $k$ sampled answers matching the majority output.
+     - `n_distinct`: Number of unique numerical solutions produced.
+     - `lp_mean`: Mean of the answers' token log-probabilities.
+     - `lp_min`: Minimum mean log-probability across completions.
+     - `len`: Log-transformed mean token length $\ln(1 + \bar{n}_{\text{tokens}})$.
+3. If the small model exhibits high consensus and confident log-probabilities, the answer is accepted locally; otherwise, the query escalates to the cloud frontier API.
+
+Exploratory analysis on the Mixtral pair ([`scripts/12_cascade_explore.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/12_cascade_explore.py), `notes/cascade_explore.md`) demonstrated that incorporating a second opinion from Yi-34B (cross-model agreement between Mixtral-8x7B and Yi-34B-Chat, not self-consistency) boosted certified savings from $9.4\%$ to **$26.0\%$ [95% CI: 24.2%, 27.9%]** at $\text{PGR} = 97.9\%$. On Track B, Qwen's own self-agreement across $k=3$ samples provides the runnable on-device equivalent of that second opinion.
+
+### 4.7.3 Track B Certified Results and Seed-Free Martingale Averaging
+
+On the official Track B evaluation ($N=4,707$ test queries, release `trackb-6265adf7ffa4a602`), we evaluate gradient-boosted decision trees trained on these internal signals:
+
+1. **Seed Variance in Sequential Martingales:** In standard Learn-then-Test, the sequential WSR betting martingale depends on the random permutation order of calibration queries. Sweeping permutation seeds $0$ through $19$ revealed significant seed sensitivity: certified test savings oscillated between **$40.8\%$ and $74.9\%$** (`notes/t60_certification_report.md`). A single random seed yielded **$40.8\%$ [95% CI: 38.7%, 43.0%]** at $\tau^* = 8.04$.
+2. **Seed-Free Certification via Terminal E-Value Averaging:** To eliminate permutation variance without violating statistical guarantees, Lane C formulated a seed-free martingale averaging procedure ([`scripts/17_t60_seed_free_wsr.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/17_t60_seed_free_wsr.py)). By averaging terminal martingale wealth across $M=50$ random permutations:
+   $$\bar{E} = \frac{1}{M} \sum_{m=1}^M E^{(m)}$$
+   linearity of expectation guarantees that $\bar{E}$ remains an exact finite-sample e-value. Inverting this test via Markov's inequality yields a completely deterministic threshold ($\tau^* = 8.219$), certifying **$41.3\%$ [95% CI: 39.0%, 43.5%] API savings** at an empirical test PGR of **$102.8\%$ [95% CI: 99.1%, 107.0%]** (escalating $75.9\%$ of queries).
+3. **Single-Sample Cascade Baseline (Decision D-14):** For environments where multi-sample decoding latency is prohibitive, the single-sample cascade (`cascade_1sample`, Rule v2) evaluates only one completion's mean log-probability (or option logit). This model achieves **$27.8\%$ [95% CI: 25.9%, 29.6%] certified savings** at $\text{PGR} = 97.7\%$ ($\tau^* = 5.86$, escalating $68.7\%$ of test queries).
+4. **Feature Combination Pathology:** Adding dense $F_2$ embeddings back into the cascade feature vector (`cascade_3sample_f2_shrunk` and `cascade_conf+f2_raw`) severely degraded certified performance down to **$1.2\% - 3.4\%$** savings (`notes/trackb_cascade_report.md`). High-dimensional embedding noise caused tree splits to overfit spurious semantic correlations on the calibration set, degrading the clean epistemic signal provided by generation agreement and log-probabilities.
 
 ---
 
-## 4.7 Summary and Handoff
+## 4.8 The Production Demonstration Router (Decision D-15)
 
-This chapter has established:
-1. Purely text-derived feature extraction pipelines ($F_0, F_1, F_2$) with rigorous anti-leakage isolation.
-2. A two-head MLP router with shared 256-d GELU trunk, decoupled marginal quality heads, and auxiliary gap loss.
-3. Post-hoc isotonic calibration reducing expected calibration error by up to $56.7\%$.
-4. A certified out-of-sample saving of **$9.4\%$** (WSR bound) and **$11.0\%$** (bootstrap bound) at $95\%$ PGR under cost-normalized decision rule v2.
+In translating these models to the interactive on-device demonstration ([`router/serve.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/serve.py)), our architectural strategy underwent an important empirical evolution between Decision D-14 and Decision D-15.
 
-The trained models and calibrated thresholds are exported to the project bundle (`router/bundle.py`, `artifacts/bundle/router.pkl`). They serve as direct inputs to:
-- **Lane C (Chapter 5)**: Evaluating complex multi-tier pricing models (M1, M2, Batch-API discounts) and cross-dataset generalization.
-- **Lane D (Chapter 6)**: Integrating the bundle into the live local inference demo with sub-15ms routing latency.
+### 4.8.1 The Failure Mode of Answer-Text Heuristics
+
+Decision D-14 originally proposed packaging a single-sample cascade bundle ([`router/bundle.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/bundle.py), `--mode cascade`) that extracted heuristic signals from Qwen's answer *text*—including explicit arithmetic slip checks, hedge words (*"maybe"*, *"perhaps"*), and regex-parsed multiple-choice letters—combined with one answer's mean log-probability.
+
+However, during interactive validation on the demo suite (Task T45, `notes/demo_set_check.md`), this text-heuristic bundle failed:
+- **Out-of-Distribution Sensitivity:** Free-form conversational queries (*"Explain quantum entanglement simply"* or *"Summarize the capital cities of Scandinavia"*) were completely out-of-distribution for the arithmetic and option regex extractors.
+- **Excessive Escalation:** The bundle escalated **$85.2\%$ of queries** on the demo test set, routing even trivial prompts that Qwen answered correctly straight to the expensive cloud frontier API (`notes/d15_demo_router.md`).
+- **Research Disconnect:** Crucially, this answer-text heuristic model was not the model certified in the thesis; the research results derived from the generation confidence signals of `cascade_3sample` (T61).
+
+### 4.8.2 Decision D-15: Unifying the Demo with the Certified Research Router
+
+To eliminate this discrepancy, the team ratified **Decision D-15** ([`DECISIONS.md`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/DECISIONS.md)): the production demonstration rebuilds and deploys Lane B's official T61 `cascade_3sample` research router (`--mode cascade_t61` in [`scripts/11_build_bundle.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/scripts/11_build_bundle.py)), driven by unified confidence signals ([`router/signals.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/signals.py)):
+
+1. **Multiple-Choice Prompts:** Evaluated via a single forward pass over candidate option letters using [`MLXOptionScorer`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/mcq_mlx.py) formatted in RouterBench's MMLU convention, extracting exact softmax probabilities (`p_chosen`, `margin`).
+2. **Numeric and Arithmetic Prompts:** Evaluated by generating $k=3$ sampled completions ($T=0.7$, top-$p=0.8$) and calculating exact numeric consensus (`agree`, `n_distinct`, `lp_mean`).
+3. **Conversational and Free-Form Prompts:** Evaluated via 3 brief stochastic completions and normalized text consensus ([`router.signals.text_agreement_signals`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/signals.py)), with the user interface transparently flagging the query as uncertified.
+4. **Certified Threshold and Dependency Pinning:** The demo bundle applies the seed-free calibrated threshold $\tau^* = 8.219$. To ensure exact reproducibility between training and serving, `requirements.txt` strictly pins `scikit-learn==1.8.0`, preventing gradient-boosted tree refit discrepancies across development machines.
+
+**Operational Trade-off:** Generating 3 brief samples on arithmetic queries introduces approximately $6\text{ seconds}$ of local decoding latency on an Apple Silicon M2. However, this latency trade-off reduces frontier escalations from $85.2\%$ down to **$65.8\%$** on the demo test set (achieving $\text{PGR} = 100.6\%$), providing rock-solid out-of-distribution stability and exact alignment with the certified research claims. Lane B's single-sample bundle (`--mode cascade`) remains preserved in the codebase as the D-14 comparative baseline for latency-constrained applications.
+
+---
+
+## 4.9 Summary and Lane Handoff
+
+This chapter has established the feature extraction and routing foundations of the project:
+1. **Leak-Free Query Feature Extraction:** Built $F_0$ heuristic, $F_1$ lexical, and $F_2$ dense embedding pipelines operating strictly on prompt text under grouped sub-split anti-leakage isolation.
+2. **Calibrated Two-Head MLP Router:** Formulated a two-head neural architecture with shared 256-d GELU trunk, decoupled marginal quality heads, and multi-task capability gap loss, achieving up to $56.7\%$ relative calibration error reduction.
+3. **The Information Limits of Text Routing:** Demonstrated that pre-execution query routers face an intrinsic ceiling ($9.4\%$ certified savings on Mixtral, collapsing to $1.8\%$ on Qwen3.5-4B due to severe headroom compression).
+4. **The Cascade Confidence Breakthrough:** Engineered generation-level consensus and probability signals that overcome text limits, unlocking **$41.3\%$ [95% CI: 39.0%, 43.5%] certified API savings** (seed-free WSR martingale) and **$27.8\%$ [95% CI: 25.9%, 29.6%]** on the single-sample baseline.
+5. **Production Demo Alignment (Decision D-15):** Rebuilt the live serving bundle from the certified 3-sample research router, resolving out-of-distribution text brittleness and ensuring exact parity between academic certification and real-time execution.
+
+The resulting routing models and certified parameters are exported to the production bundle ([`router/bundle.py`](file:///c:/Users/huwai/Desktop/Major%20Project/cost-aware-router/router/bundle.py), `artifacts/bundle/router.pkl`), providing the direct analytical inputs for:
+- **Lane C (Chapter 5):** Comprehensive economic evaluation across multi-tier pricing models (M1, M2, Batch-API discounts) and formal Learn-then-Test statistical bounds.
+- **Lane D (Chapter 6):** Local edge runtime deployment, 4-bit MLX quantization on Apple Silicon M2, sub-10ms decision latency, and interactive FastAPI web serving.

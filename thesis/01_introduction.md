@@ -102,7 +102,7 @@ Importantly, if the decision threshold is selected retrospectively by scanning t
 | **Question-Only Router (F2)** | Calibrated (LTT + WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 95.8% | 1.8% [0.5%, 2.5%] | 1.4% |
 | **Cascade Router (3-sample)** | Calibrated (Seed-Free WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | **102.8%** | **41.3% [39.0%, 43.5%]** | **36.5%** |
 | **Cascade Router (3-sample)** | Post-hoc Test Curve | None (Optimistic baseline) | 95.0% | 78.9% (4.7×) | 71.2% |
-| **Cascade Router (1-sample Demo)**| Calibrated (Single seed) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 97.4% | 27.8% [25.9%, 29.6%] | 24.1% |
+| **Cascade Router (1-sample, D-14 baseline)**| Calibrated (Single seed) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 97.7% | 27.8% [25.9%, 29.6%] | 26.5% |
 
 ---
 
