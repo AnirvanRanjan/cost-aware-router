@@ -14,7 +14,7 @@ easy-06   local     local         -0.002  arithmetic: 3/3 answers agree     Ther
 easy-08   local     local          0.009  multiple choice: option probabili The term "Cold War" refers to the A) com  ->  Union to gain political hegemony in world affairs.
 easy-09   local     local          0.009  multiple choice: option probabili During President Dwight Eisenhower's adm  ->  the construction of the interstate highway system.
 easy-10   local     local          0.009  multiple choice: option probabili What was the 'Domino Theory'? A) The ide  ->  ould inexorably lead to the fall of its neighbors.
-hard-01   local     local         -0.010  arithmetic: 3/3 answers agree     Emma bought 3 dozens of macarons in addi  ->  w many were eaten: 46 - 15 = 31. The answer is 31.
+easy-11   local     local         -0.010  arithmetic: 3/3 answers agree     Emma bought 3 dozens of macarons in addi  ->  w many were eaten: 46 - 15 = 31. The answer is 31.
 hard-02   frontier  frontier       0.171  arithmetic: 2/3 answers agree     In 6 months Bella and Bob will be celebr  ->   4. 24 minus 6 equals 18 months. The answer is 18.
 hard-03   frontier  frontier       0.110  arithmetic: 2/3 answers agree     Tom fills a 250 pound sandbag 80% full.   ->  terial: 200 + 280 = 480 pounds. The answer is 480.
 hard-04   frontier  frontier       0.135  arithmetic: 2/3 answers agree     Tyrone empties his piggy bank and finds   ->  $12.65 - $12.65 + $0.35 = $13.00 The answer is 13.

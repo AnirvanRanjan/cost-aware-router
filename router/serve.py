@@ -99,6 +99,9 @@ class Demo:
         """One local answer, from the cache when possible (call with self.lock held)."""
         key = cache_key(self.small.name, prompt, params, idx)
         hit = self.cache.get(key)
+        if not hasattr(self, "_local_cache_flags"):
+            self._local_cache_flags = []
+        self._local_cache_flags.append(hit is not None)
         if hit is not None:
             return hit
         g = (self.small.generate_one(prompt, params, idx) if hasattr(self.small, "generate_one")
@@ -143,6 +146,7 @@ class Demo:
 
     def _answer_local_first(self, query: str) -> tuple[Decision, str, dict]:
         """Cascade bundles: Qwen's answer, then the routing decision on it (call with self.lock held)."""
+        self._local_cache_flags = []                 # reset per query: which local generations were cache hits
         if self._uses_signals():
             return self._signals_local(query)
         gen_s = self._small_gen(build_prompt(self.prompt_style, query), self.params, 0)   # D-14 bundle (lane B)
@@ -162,6 +166,7 @@ class Demo:
         first = None
         pieces: list[str] = []
         hit = None
+        local_cached: bool | None = None
 
         if getattr(self.bundle, "is_cascade", False):
             # D-14 / D-15: the local model answers first (free on the Mac); the router reads that answer
@@ -173,6 +178,8 @@ class Demo:
                 yield "status", {"message": f"{self.small.name} is answering on this Mac…"}
                 with self.lock:
                     d, local_text, extra = self._answer_local_first(query)
+                flags = getattr(self, "_local_cache_flags", [])
+                local_cached = bool(flags) and all(flags)   # MCQ path: a live forward pass, never cached
                 route = force if force in ("local", "frontier") else d.route
                 client = self.large if route == "frontier" else self.small
                 yield "route", {**d.as_dict(), **extra, "route": route, "forced": route != d.route,
@@ -223,20 +230,26 @@ class Demo:
 
         answer = "".join(pieces)
         cost = self.frontier_cost(prompt, answer) if route == "frontier" else 0.0
+        counterfactual = self.frontier_cost(prompt, answer)   # what this traffic would cost always-frontier
         t = self.totals
         t.queries += 1
         t.local += route == "local"
         t.frontier += route == "frontier"
         t.spent_usd += cost
-        t.all_frontier_usd += self.frontier_cost(prompt, answer)
+        t.all_frontier_usd += counterfactual
         t.router_ms.append(d.router_ms)
         if first is not None:
             t.first_token_ms.append(first)
         yield "done", {
             "cost_usd": cost,
+            "counterfactual_usd": counterfactual,
             "total_ms": (time.perf_counter() - t0) * 1000 + d.router_ms,
             "first_token_ms": first,
-            "cached": hit is not None,
+            # Did the answer the user sees come from the cache? Cascade local answers are the
+            # k sampled local generations (all of them cached counts as a hit); MCQ runs a live
+            # forward pass for the option probabilities and is never a cache hit.
+            "cached": (bool(local_cached) if route == "local" and getattr(self.bundle, "is_cascade", False)
+                       else hit is not None),
             "totals": t.as_dict(),
         }
 

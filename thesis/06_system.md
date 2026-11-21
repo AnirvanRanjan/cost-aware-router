@@ -5,6 +5,10 @@
 > `router/serve.py` and the T42/T45/T47 run logs. Every number names the script or note it comes
 > from. Rewrite it in your own voice and check UPES's rules on declaring AI assistance before
 > submission.
+>
+> **Facts updated 2026-11-21:** demo set 24/24 on the pinned bundle, T44 replay result added,
+> scikit-learn pin spelled out in 6.8, the 2026-11-19 soak marked *PENDING T47 re-run*, and every
+> command under "Reproducing this chapter" re-run (except the H100 line).
 
 ## 6.1 What the system has to do
 
@@ -162,26 +166,33 @@ the three bars against $\tau^*$; `token` appends text as it streams; `done` reco
 total time and refreshes the sidebar totals. The sidebar prices every query and keeps a running
 "saved vs always-frontier" figure.
 
-The page was checked in **Safari on the M2** (T43): it loads with `local: qwen3.5-4b · frontier:
-gemini-3-flash · τ* = 9.657 (rule v2)` in the header, both routes were exercised end to end — a
-multiple-choice question answered locally and an arithmetic question escalated to Gemini — and the
-`status` message appears before the first token in both.
+The page was checked in **Safari on the M2** (T43, 2026-11-18): it loads with
+`local: qwen3.5-4b · frontier: gemini-3-flash` and the bundle's $\tau^*$ in the header — 9.657 on
+the scikit-learn 1.9.1 bundle the check ran on, and **8.219** now that the bundle is rebuilt under
+the 1.8.0 pin (6.8) — and both routes were exercised end to end: a multiple-choice question
+answered locally and an arithmetic question escalated to Gemini. The `status` message appears
+before the first token in both.
 
-## 6.6 Demo performance (T42, T47)
+## 6.6 Demo performance (T42, T44, T45, T47)
 
 **Router latency.** The routing decision itself is not the bottleneck: with the interim bundle the
 server measured p99 **7.6 ms** against a 15 ms target (`notes/m2_checks.md`, T42). The D-15 bundle
 adds option-scoring or three sampled answers *before* the decision, so its wait is dominated by
 generation, not by the model's inference on the features.
 
-**One-hour soak (T47).** `scripts/19_soak_demo.py` drives the running server for an hour: every
-`configs/demo_set.yaml` query first, then 200 replay-set test questions (seed 42), then a shuffled
-mix, while a background thread samples the process's memory and `/stats` every 30 s. The run also
-fills T46's cache, because each frontier answer that arrives lands under the keys `--offline` will
-look up. The run of 2026-11-19 (14:22–15:22 IST, `notes/demo_perf.md`) completed **929 queries**
-(about 15/min): 299 answered locally and 198 by the frontier, with **432 HTTP 429 errors** once the
-Gemini free tier's 20/day cap was reached. The driver recorded those errors and kept going rather
-than aborting, so the run measures throttling as well as the happy path.
+**One-hour soak (T47).** *[PENDING T47 RE-RUN — do not quote the numbers below. The run of
+2026-11-19 used the scikit-learn **1.9.1** bundle ($\tau^*$ 9.657, not the certified 8.2187) and
+the Gemini free tier; `notes/demo_perf.md` marks it superseded. The re-run waits for billing to be
+switched on and replaces this paragraph and its table.]*
+
+`scripts/19_soak_demo.py` drives the running server for an hour: every `configs/demo_set.yaml`
+query first, then 200 replay-set test questions (seed 42), then a shuffled mix, while a background
+thread samples the process's memory and `/stats` every 30 s. The run also fills T46's cache,
+because each frontier answer that arrives lands under the keys `--offline` will look up. The run
+of 2026-11-19 (14:22–15:22 IST) completed **929 queries** (about 15/min): 299 answered locally and
+198 by the frontier, with **432 HTTP 429 errors** once the Gemini free tier's 20/day cap was
+reached. The driver recorded those errors and kept going rather than aborting, so the run measures
+throttling as well as the happy path.
 
 | Measured over the hour | p50 | p95 | p99 |
 |---|--:|--:|--:|
@@ -192,17 +203,32 @@ than aborting, so the run measures throttling as well as the happy path.
 The router itself stays well under the 15 ms target (p99 6 ms, max 17 ms); a user's wait is the
 local model's three samples, which stream only after Qwen has finished them (6.5). The first query
 of the run took 3,150 ms, and the five slowest were all frontier calls that ended in 429 after
-roughly 15 s. RSS stayed at **0.11 GB from start to end** (min 0.06, max 0.13 GB across 119 samples),
-so there is no Python-side leak over a defence-length session. Server `/stats` at the end reported
-990 queries, p99 router latency 6.3 ms, and 73% saved against always-frontier list prices.
+roughly 15 s. **Memory:** RSS stayed at **0.11 GB from start to end** (min 0.06, max 0.13 GB across
+119 samples) — RSS only, so it does not include MLX's GPU allocations and is not on its own
+evidence of no leak; the re-run samples `phys_footprint` instead (`scripts/19_soak_demo.py`).
+Server `/stats` at the end reported 990 queries, p99 router latency 6.3 ms, and 73% saved against
+always-frontier list prices — that spend and savings figure mixes the 432 failed calls into both
+sides and is recomputed from answered queries only by the re-run.
 
 **Demo set (T45).** `scripts/check_demo_set.py` routes every planned demo query through the same
-code path as the server. On the M2 with the D-15 bundle the check passes **21/24**
-(`notes/demo_set_check_m2.md`): two easy questions Qwen answers correctly (3/3 agreement) land just
-above the refit's $\tau^*$, and one question the H100's Qwen got wrong the Mac's Qwen gets right
-with 3/3 agreement, so the router keeps it local. All three differences come from live sampling and
-the scikit-learn refit discussed in `notes/d15_demo_router.md`; the demo set's spare questions
-(`configs/demo_candidates.yaml`) exist to swap them out on stage.
+code path as the server. On the M2 with the certified bundle — scikit-learn 1.8.0,
+$\tau^* = 8.219$, `notes/demo_set_check_m2.md` — the check passes **24/24**: nine easy questions,
+eight hard ones (hard because Qwen is unsure, which is exactly the case a router exists for), four
+free-form and three chat questions, each landing where the plan expects it. The check is re-run
+before every demo, because the router reads Qwen's live answers and a different sample can move a
+question across $\tau^*$. The demo set's spare questions (`configs/demo_candidates.yaml`) are there
+to swap in if a live sample does move one.
+
+**Replay check (T44).** `scripts/15_replay_demo.py` puts 200 held-out test queries (seed 42;
+124 MMLU, 61 GSM8K, 8 ARC, 7 Winogrande) through the server's own code path —
+`Demo._answer_local_first` in `router/serve.py`, Qwen's answers read from the release files, no
+live generation and no frontier calls — and compares every decision with the offline evaluation
+the bundle was certified on. With the 1.8.0 bundle ($\tau^* = 8.2187$) the two agree on
+**200/200 queries**: frontier escalation 74.5% on both sides, quality 0.8600 (PGR 1.111), savings
+$0.0780 of a $0.2093 always-frontier counterfactual (**37.3%**), router decisions p50 3.57 ms /
+p99 5.43 ms (`notes/replay_report_d15.md`). Three of the 4,707 test queries cannot be replayed at
+all: Track B stored their option log-probabilities but no sampled answers, so the server's
+sampled-answer branch has nothing to read.
 
 ## 6.7 Offline mode (T46)
 
@@ -210,10 +236,12 @@ the scikit-learn refit discussed in `notes/d15_demo_router.md`; the demo set's s
 a same-named stand-in: a cached frontier answer streams normally, and an uncached one returns a
 clear "offline mode: this frontier answer is not cached" error instead of a silent hang. The cache
 is filled by running the demo set and the replay set once against the live server — exactly what
-the T47 soak does — so the fill is a side effect of a test the project already needed. After the
-2026-11-19 soak the cache holds 48 frontier and 234 local answers, and **all 24 demo-set questions
-answer offline** (checked through `/chat` against the offline server). Replay-set questions whose
-frontier call was throttled were not cached, so an offline replay must skip those.
+the T47 soak does — so the fill is a side effect of a test the project already needed. The cache
+holds **48 frontier and 258 local answers** (counted in `artifacts/cache/demo.sqlite` on
+2026-11-21; the soak-era count was 234 local), and **all 24 demo-set questions answer offline**:
+re-checked through `/chat` against the offline server on 2026-11-21, 24/24 answered, 0 errors.
+Replay-set questions whose frontier call was throttled were not cached, so an offline replay must
+skip those.
 
 ## 6.8 Limitations
 
@@ -224,16 +252,22 @@ frontier call was throttled were not cached, so an offline replay must skip thos
   tightens mid-defence, the offline mode of 6.7 is the fallback and the cache must have been filled
   beforehand.
 - **The demo set moves with the sampler.** The router reads Qwen's live answers, so a question's
-  route can differ from the check's (21/24 on this machine). The check is re-run before every demo,
-  and the spares are verified on the demo machine before they are added.
-- **The bundle is tied to its scikit-learn version.** A refit on another machine reproduces the
-  pipeline but not the exact predictions (`notes/d15_demo_router.md`); the demo bundle is built
-  once, on the M2, and shipped as a pickle.
+  route can differ from the check's (24/24 on this machine as of the 1.8.0 bundle). The check is
+  re-run before every demo, and the spares are verified on the demo machine before they are added.
+- **The bundle is tied to its scikit-learn version.** `requirements.txt` pins **scikit-learn
+  1.8.0** because the release router and $\tau^* = 8.2187$ came from it: a 1.9.1 refit reproduces
+  the pipeline but certifies **48.3%** [46.1, 50.5] instead of **41.3%** [39.0, 43.5] on the same
+  data (`notes/d15_demo_router.md`; the fresh-clone check in the README, "Reproduce the headline
+  and the demo"). The demo bundle is built once, on the M2, and shipped as a pickle.
 - **The soak is one hour, not one day.** It covers the demo's traffic shape — a few hundred queries,
-  mixed local and frontier — but not multi-day drift; memory over the hour is the leak check that
-  matters for a defence-length session.
+  mixed local and frontier — but not multi-day drift; physical footprint over the hour (the
+  re-run's `phys_footprint` sampling, not RSS alone) is the leak check that matters for a
+  defence-length session.
 
 ## Reproducing this chapter
+
+Verified on the M2 on 2026-11-21 (Python 3.13.2, scikit-learn 1.8.0); the GPU line is the only
+one that needs the H100.
 
 ```bash
 # local arm (M2)
@@ -243,12 +277,17 @@ python scripts/14_score_mcq.py --sources mmlu --limit 50                      # 
 # labels (H100)
 bash gpu/run_trackb.sh --limit 20     # smoke; then the full run, ~5.5 min
 python scripts/10_build_trackb.py --responses artifacts/trackb/qwen_responses.parquet \
-                                  --mcq artifacts/trackb/qwen_mcq_scores.parquet
+                                  --mcq artifacts/trackb/qwen_mcq_scores.parquet   # 23,580 rows, hash 6265adf7ffa4a602
 
-# serving and demo
-python scripts/11_build_bundle.py --mode cascade_t61 --samples 3             # the D-15 bundle
-python scripts/check_demo_set.py --out-md notes/demo_set_check_m2.md          # 21/24 on the M2
+# serving, demo and the two checks
+python scripts/11_build_bundle.py --mode cascade_t61 --samples 3             # tau* 8.2187, T41 100%
+python scripts/check_demo_set.py --out-md notes/demo_set_check_m2.md          # 24/24 on the M2
+python scripts/15_replay_demo.py                                             # 200/200 vs offline, ~3 s
 python scripts/serve_demo.py                                                 # live, both routes
 caffeinate -i python scripts/19_soak_demo.py --minutes 60                    # T46 fill + T47 soak
-python scripts/serve_demo.py --offline                                       # same demo, no network
+                                                                             # [PENDING: Gemini billing]
+python scripts/serve_demo.py --offline                                       # same demo, no network (24/24)
 ```
+
+The headline numbers behind 6.6 and 6.8 (τ\* 8.2187, 41.3% [39.0, 43.5] certified savings) are
+reproduced from a fresh clone by the README section "Reproduce the headline and the demo".
