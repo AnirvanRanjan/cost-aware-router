@@ -1,8 +1,12 @@
 # Chapter 5 — Cost Model, Threshold Selection, Statistical Guarantees, and Empirical Results
 
+> **Author Declaration:** This chapter was authored by Sarthak Jakhmola (Lane C: Calibration, Evaluation, and Risk Control). In accordance with University of Petroleum and Energy Studies (UPES) guidelines on academic integrity and generative artificial intelligence assistance, AI tools were utilized exclusively as an editorial and drafting assistant to refine syntactic structure, generate KaTeX formatting, and assemble tables from verified empirical logs (`scripts/17_t60_seed_free_wsr.py`, `scripts/08_threshold_report.py`, and `notes/trackb_cascade_report.md`). All theoretical formulations, mathematical proofs, experimental designs, and statistical evaluations were conceived, implemented, verified, and audited by the author.
+
+---
+
 ## 5.1 Introduction and Formal Problem Formulation
 
-The economic challenge of deploying Large Language Models (LLMs) stems from a stark asymmetry: high-capability frontier models (such as GPT-4 and Claude 3.5 Sonnet) command premium API pricing, while compact open-weight models can execute on local hardware at near-zero marginal operational cost. A cost-aware router dynamically assigns an incoming prompt $q \in \mathcal{X}$ to either:
+The economic challenge of deploying Large Language Models (LLMs) stems from a stark asymmetry: high-capability frontier models (such as GPT-4 and Claude Sonnet 4.6) command premium API pricing, while compact open-weight models can execute on local hardware at near-zero marginal operational cost. A cost-aware router dynamically assigns an incoming prompt $q \in \mathcal{X}$ to either:
 1. A local edge model $S$ incurring zero direct API fees (or minimal amortized device expense), or
 2. A cloud frontier model $L$ characterized by state-of-the-art capability at significant per-token expenditure.
 
@@ -179,18 +183,20 @@ Table 5.1 presents the locked benchmark results on the frozen Track B test set (
 
 | Router Model | Decision Rule | Calibration Method | Cal $\tau^*$ | Test Escalation $\alpha_{\text{test}}$ [95% CI] | Realized Test PGR [95% CI] | Certified API Savings (M1) [95% CI] | Amortized Hardware Savings (M2) |
 |---|---|---|--:|--:|:---:|:---:|:---:|
-| **Question-Only (`query_f2`)** | Rule v2 | Seed-Free WSR | 9.8934 | 98.1% [97.7, 98.5] | 98.6% [96.1, 101.0] | **2.1% [1.5, 2.7]** | **-2.6%** |
-| **Cascade 1-Sample (Sample-0 Quality)** | Rule v2 | Seed-Free WSR | 13.5077 | 67.9% [66.5, 69.2] | 98.4% [95.2, 101.6] | **29.5% [27.8, 31.5]** | **28.1%** |
+| **Question-Only (`query_f2`)** | Rule v2 | Seed-Free WSR | 9.8934 | 98.1% [97.7, 98.5] | 98.6% [96.1, 101.0] | **2.1% [1.5, 2.7]** | **2.0%** |
+| **Cascade 1-Sample (Sample-0 Quality)** | Rule v2 | Seed-Free WSR | 13.6310 | 67.9% [66.5, 69.2] | 98.4% [95.2, 101.6] | **29.5% [27.8, 31.5]** | **24.7%** |
 | Cascade 1-Sample (Majority Quality) | Rule v2 | Seed-Free WSR | 13.5077 | 68.7% [67.3, 70.0] | 97.7% [94.4, 101.1] | 27.8% [26.0, 29.7] | 23.0% |
 | **Cascade 3-Sample (`cascade_3sample`)** | **Rule v2** | **Seed-Free WSR ($M=50$)** | **8.2187** | **75.9% [74.7, 77.1]** | **102.8% [99.1, 107.0]** | **41.3% [39.0, 43.5]** | **36.5% [34.3, 38.7]** |
 | Cascade 3-Sample (`cascade_3sample`) | Rule v2 | Naive on cal | 4.1200 | 42.9% [41.5, 44.3] | 97.2% [91.9, 103.2] | 77.0% [75.4, 78.7] | 73.3% |
 | Cascade 3-Sample (`cascade_3sample`) | Rule v2 | Post-hoc Test Curve | — | 39.5% | 95.0% | 78.9% (uncertified) | 71.2% |
 
-*Note on 1-sample cascade evaluation:* In a single-sample cascade deployment, the user receives sample 0 directly on local completions. Scored against sample 0 ground truth, seed-free WSR certifies **29.5% [27.8%, 31.5%]** spend savings ($\alpha_{\text{test}} = 67.9\%$, PGR = 98.4%). Scored against the majority-of-3 label as an approximation, it yields 27.8% [26.0%, 29.7%] savings ($\alpha_{\text{test}} = 68.7\%$). We recommend reporting the true single-sample quality (29.5% certified savings) for the 1-sample configuration across Chapters 1, 4, and 7.
+*Accounting Notes on Model M2 and Single-Sample Evaluation:*
+1. **Model M2 Accounting Conventions**: In a question-only router (`query_f2`), local inference runs exclusively on queries assigned to model $S$; charging local execution only when queries are kept on-device yields **2.0% M2 savings** (matching M1 spend closely). In cascade routing, local inference is evaluated prior to escalation. For `cascade_3sample`, the headline **36.5% M2 savings** assesses local execution charging one full generation per question (the multi-choice logit pass plus a primary autoregressive solution). If all three sampled generation rollouts on GSM8K are fully billed at local hardware amortisation rates, M2 savings adjust to **28.4%** (direct M1 API spend savings remain unchanged at 41.3%).
+2. **1-Sample Cascade Calibration**: When recalibrated on true single-sample responses (where the user receives sample 0 directly), seed-free WSR yields $\tau^* = 13.6310$, providing **29.5% [27.8%, 31.5%] certified API spend savings** ($\alpha_{\text{test}} = 67.9\%$, PGR = 98.4%, M2 = 24.7%). Evaluated against the majority-of-3 label as a proxy, the cutoff is $\tau^* = 13.5077$ (27.8% savings). We report the 29.5% figure as the true user-facing metric for single-sample deployments.
 
 ### 5.6.2 Key Empirical Takeaways
 
-1. **Certified Savings vs. Empirical Illusions:** Scanning the test curve retrospectively suggests apparent savings of **78.9%** (a 4.7× cost reduction). However, statistical risk control via seed-free WSR establishes the certified, production-safe savings at **41.3% [39.0%, 43.5%]** (test $\text{PGR} = 102.8\%$). The difference represents the essential safety premium required to guarantee performance without data leakage.
+1. **Certified Savings vs. Post-hoc Observations:** Scanning the empirical test curve retrospectively suggests apparent cost savings of **78.9%** (a 4.7× cost reduction). However, statistical risk control via seed-free WSR establishes the certified, production-safe savings at **41.3% [39.0%, 43.5%]** (test $\text{PGR} = 102.8\%$). The difference represents the essential safety premium required to guarantee performance without data leakage.
 2. **Failure of Question-Only Routing under Narrow Headroom:** On query text features alone (`query_f2`), the seed-free calibrated router saves only **2.1% [1.5%, 2.7%]** certified spend, requiring a 98.1% escalation rate. Because the capability gap between Qwen3.5-4B and GPT-4 is narrow ($\Delta = 0.0748$), prompt syntax alone cannot reliably identify failure modes.
 3. **Generation Diagnostics Drive Cascade Superiority:** In contrast to query embeddings, inspecting Qwen's own generation consensus (3-sample agreement on GSM8K and chosen option probabilities on MCQ) unlocks **41.3% certified spend reduction**.
 4. **Reproducibility and Software Environment Dependency:** Rebuilding gradient-boosted trees on differing scikit-learn versions alters tree leaf splits: the release model fitted with `scikit-learn==1.8.0` certifies at $\tau^* = 8.2187$ (**41.3% savings**), whereas refitting on `scikit-learn==1.9.1` yields $\tau^* = 9.657$ (certifying at 48.3% [46.1%, 50.5%]). Both are valid certificates for their respective fitted models; this thesis locks and quotes the official release file (`trackb-6265adf7ffa4a602`) with `scikit-learn==1.8.0` pinned in `requirements.txt`.
@@ -215,7 +221,7 @@ To evaluate router behavior across varying capability deltas, Table 5.2 compares
 ### Observations:
 1. **Headroom Compression:** Moving from Mixtral ($\Delta = 0.2373$) to Yi-34B ($\Delta = 0.2054$) and Qwen3.5-4B ($\Delta = 0.0748$) contracts the capability gap threefold.
 2. **Universal Limits of Question-Only Classifiers:** Across all three pairs, question-only routing yields modest uncertified savings ($12.0\%$ to $21.1\%$), escalating $85.9\%–96.4\%$ of prompts to attain $\text{PGR} \ge 0.95$.
-3. **Cascade Leverage:** Generation-level inspection on the Qwen pair boosts uncertified curve savings from $21.1\%$ to $78.9\%$ at CPT $39.5\%$, confirming that output verification fundamentally surpasses prompt embeddings across model architectures.
+3. **Cascade Leverage:** Generation-level inspection on the Qwen pair boosts uncertified curve savings from $21.1\%$ to $78.9\%$ at CPT $39.5\%$, confirming that output verification substantially outperforms prompt embeddings.
 
 ---
 
@@ -234,17 +240,19 @@ On MMLU (2,808 test rows across 57 academic subjects), subject diversity tests w
 
 **Findings:**
 - Out-of-fold generalization incurs an average ROC-AUC drop of $0.028$ to $0.048$ (savings reducing from 14.6% to 10.3% across fold averages).
-- While the aggregate out-of-fold savings remain at 10.1%, subject-level variance is substantial: savings on individual held-out folds range from a high of 17.5% down to **4.0% on the most challenging fold**. This demonstrates that question-only text representations remain sensitive to domain shifts across specialized disciplines.
+- While aggregate out-of-fold savings remain at 10.1%, subject-level variation is wide: savings across individual held-out folds span from **29.7% on the best fold (Fold 5)** down to **4.0% on the most challenging fold (Fold 6)**. This variation illustrates that text representations remain sensitive to domain shifts across specialized disciplines.
 
 ---
 
 ## 5.9 Interactive Replay and Latency Profiling (Task T44)
 
-To verify serving pipeline integrity between offline experimental code and real-time execution, `scripts/15_replay_demo.py` processed 200 held-out test queries through the interim Mixtral router bundle (`artifacts/bundle/router.pkl`, calibrated cutoff $\tau^* = 0.0791$):
-- **Decision Parity:** 100.0% match with the `threshold.evaluate_at_tau` reference implementation.
-- **Escalation Frequency ($\alpha$):** 92.0% (16 local queries, 184 frontier calls).
-- **Aggregate Accuracy:** 0.8750 (Baseline $S$: 0.6100, $L$: 0.8850).
-- **Cost Reduction:** 11.1% realized live spend savings ($0.0709 vs $0.0798 counterfactual).
-- **Routing Decision Overhead:** Median 14.3 ms, 99th percentile 29.7 ms on CPU.
+To verify serving pipeline integrity between offline experimental code and real-time execution, `scripts/15_replay_demo.py` processed 200 held-out test queries through the serving engine path:
 
-These results confirm that the calibrated decision boundaries, cost models, and feature extractors operate identically in interactive serving. Full end-to-end replay on the final D-15 Qwen cascade bundle remains as an active integration task (T44) in the deployment pipeline.
+1. **Interim Development Replay (Mixtral Pair)**: Replaying through the development bundle (`artifacts/bundle/router.pkl`, calibrated cutoff $\tau^* = 0.0791$) confirmed 100.0% decision agreement with offline references, an escalation frequency $\alpha = 92.0\%$, and a CPU routing overhead of median 14.3 ms (p99 29.7 ms).
+2. **Production Demonstration Replay (D-15 Qwen Cascade Bundle, PR #23 / `notes/replay_report_d15.md`)**: Replaying 200 held-out Track B test queries through the live server path (`router/serve.py`, `Demo._answer_local_first`) with the certified D-15 bundle (`cascade_t61_3sample`, $\tau^* = 8.2187$):
+   - **Decision Agreement**: **200/200 (100.0% exact match)** against offline reference evaluation.
+   - **Frontier Escalation Rate ($\alpha_{\text{sample}}$)**: **74.5%** (51 local, 149 frontier calls).
+   - **Spend Savings**: **37.3% [29.8%, 44.8%]** on this 200-query slice ($0.0780 saved of $0.2093 counterfactual).
+   - **Router Decision Latency**: **Median 3.57 ms, 99th percentile 5.43 ms** (200 decisions executed in 0.8s wall-clock time).
+
+These results confirm that the calibrated decision boundaries, cost models, and feature extractors operate identically in interactive serving.
