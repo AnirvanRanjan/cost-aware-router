@@ -43,11 +43,11 @@ Under our standard frontier reference pricing (`claude-sonnet-4.6` rates mapped 
 
 Model M2 incorporates capital asset depreciation and electrical energy consumption during local model execution. We instantiate this model for an Apple M2 MacBook Air (16 GB unified RAM), strictly separating explicit assumptions from empirical hardware benchmarks:
 
-**Hardware Parameters and Financial Assumptions (`configs/models.yaml`):**
-- Hardware acquisition price: $P_{\text{hw}} = \$1,199$
-- Expected operational lifecycle: $Y = 3$ years (straight-line depreciation)
-- Active duty cycle: $H = 8$ hours/day
-- Measured active system power during inference: $W = 20$ watts
+**Hardware Assumptions (`configs/models.yaml`):**
+- Hardware purchase price: $P_{\text{hw}} = \$1,199$
+- Expected operational lifecycle: $Y = 3$ years (straight-line amortisation)
+- Active daily utilization: $H = 8$ hours/day
+- Power draw assumption: $W = 20$ watts (assumed active package power during local decoding)
 - Commercial electricity tariff: $R_{\text{kwh}} = \$0.12/\text{kWh}$
 
 $$\text{DepreciationPerHour} = \frac{P_{\text{hw}}}{Y \times 365 \times H} = \frac{1199}{3 \times 365 \times 8} \approx \$0.1369/\text{hour}$$
@@ -110,14 +110,16 @@ Computing differences paired on the exact same question eliminates cross-query d
 
 ### 5.4.2 Sequential Hypothesis Testing Protocol
 
-1. An ordered grid of candidate thresholds $\tau_1 > \tau_2 > \dots > \tau_K$ (from most frontier calls to least) is constructed exclusively on training data.
-2. For each candidate threshold in descending order, we formulate the null hypothesis:
+1. An ordered grid of candidate thresholds is constructed exclusively on training data:
+   $$\tau_1 < \tau_2 < \dots < \tau_K$$
+   The sequence begins at the most conservative threshold ($\tau_1 = -\infty$, which routes all queries to the frontier model $L$, trivially satisfying the target PGR) and ascends toward progressively larger thresholds that route fewer queries to $L$.
+2. For each candidate threshold in ascending order, we formulate the null hypothesis:
    $$H_{0, k}: \mathbb{E}[e(\tau_k)] < 0 \quad (\text{i.e. } \text{PGR}(\tau_k) < \rho)$$
 3. We test sequentially using valid finite-sample p-values $p_k$. Testing terminates at the very first failure index $k_{\text{fail}} = \min \{k : p_k > \delta\}$.
-4. The calibrated threshold is selected as $\tau^* = \tau_{k_{\text{fail}} - 1}$.
+4. The calibrated threshold is selected as the last threshold that successfully rejected the null hypothesis: $\tau^* = \tau_{k_{\text{fail}} - 1}$.
 
 **Family-Wise Error Rate (FWER) Control:**  
-Because the sequence of hypotheses is evaluated in a fixed descending order and halts at the first non-rejection, testing achieves rigorous FWER control:
+Because the sequence of hypotheses is evaluated in a fixed order starting from the safe all-frontier baseline and halts at the first non-rejection, testing achieves rigorous FWER control:
 $$\mathbb{P}(\text{Type I Error}) \le \delta$$
 without requiring Bonferroni or Holm-Šidák multi-testing penalties.
 
@@ -175,18 +177,21 @@ Table 5.1 presents the locked benchmark results on the frozen Track B test set (
 
 **Table 5.1 — Locked Headline Results for Qwen3.5-4B vs. GPT-4 on Track B Test Split.**
 
-| Router Model | Decision Rule | Calibration Method | Cal $\tau^*$ | Test Escalation $\alpha_{\text{test}}$ [95% CI] | Realized Test PGR [95% CI] | Certified API Savings (M1) [95% CI] | Amortized Hardware Savings (M2) [95% CI] |
+| Router Model | Decision Rule | Calibration Method | Cal $\tau^*$ | Test Escalation $\alpha_{\text{test}}$ [95% CI] | Realized Test PGR [95% CI] | Certified API Savings (M1) [95% CI] | Amortized Hardware Savings (M2) |
 |---|---|---|--:|--:|:---:|:---:|:---:|
-| **Question-Only (`query_f2`)** | Rule v2 | Seed-Free WSR | 0.9810 | 97.7% [96.0, 101.3] | 98.6% [96.0, 101.3] | **2.5% [1.8, 3.1]** | **2.3%** |
-| **Cascade 1-Sample (`cascade_1sample`)** | Rule v2 | Seed-Free WSR | 0.0831 | 68.7% [67.1, 70.3] | 97.7% [94.5, 100.9] | **27.8% [25.9, 29.6]** | **26.5%** |
+| **Question-Only (`query_f2`)** | Rule v2 | Seed-Free WSR | 9.8934 | 98.1% [97.7, 98.5] | 98.6% [96.1, 101.0] | **2.1% [1.5, 2.7]** | **-2.6%** |
+| **Cascade 1-Sample (Sample-0 Quality)** | Rule v2 | Seed-Free WSR | 13.5077 | 67.9% [66.5, 69.2] | 98.4% [95.2, 101.6] | **29.5% [27.8, 31.5]** | **28.1%** |
+| Cascade 1-Sample (Majority Quality) | Rule v2 | Seed-Free WSR | 13.5077 | 68.7% [67.3, 70.0] | 97.7% [94.4, 101.1] | 27.8% [26.0, 29.7] | 23.0% |
 | **Cascade 3-Sample (`cascade_3sample`)** | **Rule v2** | **Seed-Free WSR ($M=50$)** | **8.2187** | **75.9% [74.7, 77.1]** | **102.8% [99.1, 107.0]** | **41.3% [39.0, 43.5]** | **36.5% [34.3, 38.7]** |
 | Cascade 3-Sample (`cascade_3sample`) | Rule v2 | Naive on cal | 4.1200 | 42.9% [41.5, 44.3] | 97.2% [91.9, 103.2] | 77.0% [75.4, 78.7] | 73.3% |
 | Cascade 3-Sample (`cascade_3sample`) | Rule v2 | Post-hoc Test Curve | — | 39.5% | 95.0% | 78.9% (uncertified) | 71.2% |
 
+*Note on 1-sample cascade evaluation:* In a single-sample cascade deployment, the user receives sample 0 directly on local completions. Scored against sample 0 ground truth, seed-free WSR certifies **29.5% [27.8%, 31.5%]** spend savings ($\alpha_{\text{test}} = 67.9\%$, PGR = 98.4%). Scored against the majority-of-3 label as an approximation, it yields 27.8% [26.0%, 29.7%] savings ($\alpha_{\text{test}} = 68.7\%$). We recommend reporting the true single-sample quality (29.5% certified savings) for the 1-sample configuration across Chapters 1, 4, and 7.
+
 ### 5.6.2 Key Empirical Takeaways
 
 1. **Certified Savings vs. Empirical Illusions:** Scanning the test curve retrospectively suggests apparent savings of **78.9%** (a 4.7× cost reduction). However, statistical risk control via seed-free WSR establishes the certified, production-safe savings at **41.3% [39.0%, 43.5%]** (test $\text{PGR} = 102.8\%$). The difference represents the essential safety premium required to guarantee performance without data leakage.
-2. **Failure of Question-Only Routing under Narrow Headroom:** On query text features alone (`query_f2`), the router saves only **2.5%** certified spend, requiring a 97.7% escalation rate. Because the capability gap between Qwen3.5-4B and GPT-4 is narrow ($\Delta = 0.0748$), prompt syntax alone cannot reliably identify failure modes.
+2. **Failure of Question-Only Routing under Narrow Headroom:** On query text features alone (`query_f2`), the seed-free calibrated router saves only **2.1% [1.5%, 2.7%]** certified spend, requiring a 98.1% escalation rate. Because the capability gap between Qwen3.5-4B and GPT-4 is narrow ($\Delta = 0.0748$), prompt syntax alone cannot reliably identify failure modes.
 3. **Generation Diagnostics Drive Cascade Superiority:** In contrast to query embeddings, inspecting Qwen's own generation consensus (3-sample agreement on GSM8K and chosen option probabilities on MCQ) unlocks **41.3% certified spend reduction**.
 4. **Reproducibility and Software Environment Dependency:** Rebuilding gradient-boosted trees on differing scikit-learn versions alters tree leaf splits: the release model fitted with `scikit-learn==1.8.0` certifies at $\tau^* = 8.2187$ (**41.3% savings**), whereas refitting on `scikit-learn==1.9.1` yields $\tau^* = 9.657$ (certifying at 48.3% [46.1%, 50.5%]). Both are valid certificates for their respective fitted models; this thesis locks and quotes the official release file (`trackb-6265adf7ffa4a602`) with `scikit-learn==1.8.0` pinned in `requirements.txt`.
 
@@ -216,9 +221,9 @@ To evaluate router behavior across varying capability deltas, Table 5.2 compares
 
 ## 5.8 Leave-One-Subject-Out (LOSO) Domain Generalization (Task T26)
 
-On MMLU (2,808 test rows across 57 academic subjects), subject diversity tests whether the router memorizes subject-specific vocabulary or captures generalized task difficulty. We execute 10-fold leave-one-subject-out cross-validation (`scripts/13_loso_mmlu.py`):
+On MMLU (2,808 test rows across 57 academic subjects), subject diversity tests whether the router memorizes subject-specific vocabulary or captures generalized task difficulty. We evaluate the development pair (`mixtral-8x7b-chat` vs. `gpt-4-1106-preview`) across 10 held-out subject folds (`scripts/13_loso_mmlu.py`):
 
-**Table 5.3 — Leave-One-Subject-Out Cross-Validation on MMLU.**
+**Table 5.3 — Leave-One-Subject-Out Cross-Validation on MMLU (Mixtral Pair, 10 Folds).**
 
 | Evaluation Scheme | Comparison Basis | Test Rows | ROC-AUC | CPT(95%) | Savings @ PGR .95 | APGR |
 |---|---|--:|:--:|:--:|:--:|:--:|
@@ -227,17 +232,19 @@ On MMLU (2,808 test rows across 57 academic subjects), subject diversity tests w
 | **Pooled Baseline (All Test Rows)** | All test rows scored | 2,808 | 0.6652 | 0.9000 | 11.7% | 0.6331 |
 | **LOSO Out-of-Fold (All Test Rows)** | All test rows scored | 2,808 | 0.6171 | 0.9100 | 10.1% | 0.5845 |
 
-The out-of-fold generalization penalty is modest (AUC reduction of $0.028$ to $0.048$; savings drop of ~1.6% to 4.3%). The router sustains $\ge 10.1\%$ cost savings on completely novel subjects, confirming reliable domain transfer.
+**Findings:**
+- Out-of-fold generalization incurs an average ROC-AUC drop of $0.028$ to $0.048$ (savings reducing from 14.6% to 10.3% across fold averages).
+- While the aggregate out-of-fold savings remain at 10.1%, subject-level variance is substantial: savings on individual held-out folds range from a high of 17.5% down to **4.0% on the most challenging fold**. This demonstrates that question-only text representations remain sensitive to domain shifts across specialized disciplines.
 
 ---
 
 ## 5.9 Interactive Replay and Latency Profiling (Task T44)
 
-To bridge offline evaluation with live production execution, `scripts/15_replay_demo.py` processed 200 held-out test queries through the production bundle (`artifacts/bundle/router.pkl`, calibrated cutoff $\tau^* = 0.0791$):
+To verify serving pipeline integrity between offline experimental code and real-time execution, `scripts/15_replay_demo.py` processed 200 held-out test queries through the interim Mixtral router bundle (`artifacts/bundle/router.pkl`, calibrated cutoff $\tau^* = 0.0791$):
 - **Decision Parity:** 100.0% match with the `threshold.evaluate_at_tau` reference implementation.
 - **Escalation Frequency ($\alpha$):** 92.0% (16 local queries, 184 frontier calls).
 - **Aggregate Accuracy:** 0.8750 (Baseline $S$: 0.6100, $L$: 0.8850).
 - **Cost Reduction:** 11.1% realized live spend savings ($0.0709 vs $0.0798 counterfactual).
 - **Routing Decision Overhead:** Median 14.3 ms, 99th percentile 29.7 ms on CPU.
 
-These results confirm that the calibrated decision boundaries, cost models, and statistical guarantees execute identically between static experimental pipelines and interactive serving infrastructure.
+These results confirm that the calibrated decision boundaries, cost models, and feature extractors operate identically in interactive serving. Full end-to-end replay on the final D-15 Qwen cascade bundle remains as an active integration task (T44) in the deployment pipeline.
