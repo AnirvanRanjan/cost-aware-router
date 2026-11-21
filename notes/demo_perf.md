@@ -1,5 +1,16 @@
 # Demo soak test (T47)
 
+> **Superseded (T47 re-run pending).** This run used the scikit-learn 1.9.1 bundle
+> (tau\* 9.657, not the certified 8.2187) and the Gemini free tier, so 432 of the 929
+> queries failed with HTTP 429 and the `/stats` spend, savings ("73% saved") and
+> first-token figures below mix failures and cache hits together; only RSS was sampled,
+> which does not include MLX's GPU allocations, so the memory line is not evidence of
+> no growth. Do not quote these numbers. `scripts/19_soak_demo.py` now samples
+> phys_footprint, splits cache hits from live calls, and excludes failed calls from
+> spend/savings; the re-run waits for Gemini billing to be switched on (T47).
+>
+> The numbers below are kept as the record of the 2026-11-19 run.
+
 *2026-11-19 14:22, 60.0 minutes, lane D on the M2 (arm64, 16 GB).*
 
 ```

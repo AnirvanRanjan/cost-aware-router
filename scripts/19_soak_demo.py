@@ -5,12 +5,15 @@
     caffeinate -i python scripts/19_soak_demo.py         # 60 minutes, demo set + replay set
 
 Asks every demo-set query first, then 200 replay-set test questions, then keeps cycling a mix
-until the deadline, sampling the server's RSS and /stats on a background thread. The run also
-completes T46: every frontier answer it sees is written to artifacts/cache/demo.sqlite under the
-same keys `serve_demo.py --offline` will look up, so after this the demo runs with the Wi-Fi off.
+until the deadline, sampling the server's RSS, its phys_footprint (`footprint -p`, else
+`vmmap --summary`) and /stats on a background thread. The run also completes T46: every frontier
+answer it sees is written to artifacts/cache/demo.sqlite under the same keys
+`serve_demo.py --offline` looks up, so after this the demo runs with the Wi-Fi off.
 
-Reports cold start (first query, model load included), first-token and total latency by route,
-router latency from /stats, memory over time, and any errors or throttling.
+Reports cold start (first query, model load included), first-token and total latency split into
+cache hits and live calls, router latency from /stats, spend and savings computed from the
+answered queries only (failed calls are excluded from both), phys_footprint and RSS over time,
+and any errors or throttling.
 """
 from __future__ import annotations
 
@@ -52,15 +55,33 @@ def rss_kb(pid: int) -> int | None:
         return None
 
 
-def footprint_mb(pid: int) -> float | None:
-    """macOS phys footprint, the number that includes MLX's IOAccelerator allocations."""
+_FP_UNITS = {"KB": 1 / 1024, "MB": 1.0, "GB": 1024.0, "K": 1 / 1024**2, "M": 1 / 1024, "G": 1.0}
+
+
+def phys_footprint_mb(pid: int) -> tuple[float | None, str | None]:
+    """The server process's real footprint in MB: `footprint -p <pid>`, else `vmmap --summary`.
+
+    `footprint` prints "Footprint: 1361 KB" / "... MB" / "... GB" depending on size, and
+    `vmmap --summary` prints "Physical footprint: 1233K" -- both are the phys_footprint number
+    that includes MLX's IOAccelerator allocations, which RSS misses. Returns (MB, tool).
+    """
     try:
         out = subprocess.run(["footprint", "-p", str(pid)], capture_output=True, text=True,
-                             timeout=10).stdout
-        m = re.search(r"Footprint:\s+([\d.]+)\s+MB", out)
-        return float(m.group(1)) if m else None
+                             timeout=20).stdout
+        m = re.search(r"Footprint:\s+([\d.]+)\s+(KB|MB|GB)", out)
+        if m:
+            return float(m.group(1)) * _FP_UNITS[m.group(2)], "footprint"
     except Exception:                                          # noqa: BLE001
-        return None
+        pass
+    try:
+        out = subprocess.run(["vmmap", "--summary", str(pid)], capture_output=True, text=True,
+                             timeout=60).stdout
+        m = re.search(r"Physical footprint:\s+([\d.]+)([KMG])", out)
+        if m:
+            return float(m.group(1)) * _FP_UNITS[m.group(2)], "vmmap"
+    except Exception:                                          # noqa: BLE001
+        pass
+    return None, None
 
 
 def ask(endpoint: str, query: str, timeout: float) -> dict:
@@ -73,7 +94,7 @@ def ask(endpoint: str, query: str, timeout: float) -> dict:
     except (URLError, OSError) as e:
         return {"error": f"{type(e).__name__}: {e}", "wall_ms": (time.perf_counter() - t0) * 1000,
                 "route": None, "model": None, "router_ms": None, "first_token_ms": None,
-                "cost_usd": None, "cached": None}
+                "cost_usd": None, "counterfactual_usd": None, "cached": None}
     done = data.get("done") or {}
     route = data.get("route") or {}
     return {
@@ -84,6 +105,7 @@ def ask(endpoint: str, query: str, timeout: float) -> dict:
         "router_ms": route.get("router_ms"),
         "first_token_ms": done.get("first_token_ms"),
         "cost_usd": done.get("cost_usd"),
+        "counterfactual_usd": done.get("counterfactual_usd"),
         "cached": done.get("cached"),
     }
 
@@ -130,17 +152,26 @@ def main() -> None:
     print(f"server pid={pid} | {health['small']} + {health['large']} | tau*={health['tau']:.3f} "
           f"rule {health['rule']} | featurizer {health['bundle'].get('featurizer')}")
 
+    def stats_now() -> dict | None:
+        try:
+            return json.loads(urlopen(f"{args.endpoint}/stats", timeout=10).read())
+        except Exception:                                      # noqa: BLE001
+            return None
+
+    stats_start = stats_now()
+
     samples: list[dict] = []                                 # RSS + /stats snapshots
     stop = threading.Event()
+    fp_tool: str | None = None
 
     def sampler() -> None:
+        nonlocal fp_tool
         while not stop.is_set():
-            row = {"t": time.time(), "rss_kb": rss_kb(pid) if pid else None,
-                   "fp_mb": footprint_mb(pid) if pid else None}
-            try:
-                row["stats"] = json.loads(urlopen(f"{args.endpoint}/stats", timeout=10).read())
-            except Exception:                                 # noqa: BLE001
-                row["stats"] = None
+            fp_mb, tool = phys_footprint_mb(pid) if pid else (None, None)
+            if tool:
+                fp_tool = tool
+            row = {"t": time.time(), "rss_kb": rss_kb(pid) if pid else None, "fp_mb": fp_mb}
+            row["stats"] = stats_now()
             samples.append(row)
             stop.wait(args.sample_seconds)
 
@@ -186,8 +217,25 @@ def main() -> None:
     ft_fro = [r["first_token_ms"] for r in front if r["first_token_ms"] is not None]
     wall = [r["wall_ms"] for r in ok]
     router = [r["router_ms"] for r in ok if r["router_ms"] is not None]
+    # Cache hits vs live calls: done.cached says whether the answer the user saw came from the
+    # answer cache (all k local samples cached for a local route, the frontier answer cached for
+    # a frontier route). MCQ option scoring is always a live forward pass, so never a hit.
+    hit_q = [r for r in ok if r.get("cached") is True]
+    live_q = [r for r in ok if r.get("cached") is False]
+    ft_hit = [r["first_token_ms"] for r in hit_q if r["first_token_ms"] is not None]
+    ft_live = [r["first_token_ms"] for r in live_q if r["first_token_ms"] is not None]
+    wall_hit = [r["wall_ms"] for r in hit_q]
+    wall_live = [r["wall_ms"] for r in live_q]
+    # Money from the queries that succeeded only: every failed call is excluded from both the
+    # spend and the always-frontier counterfactual (a failed call cost nothing and produced no
+    # answer, so it must not move the savings figure either way).
+    spent_ok = float(sum(r["cost_usd"] or 0.0 for r in ok))
+    all_front_ok = float(sum(r["counterfactual_usd"] or 0.0 for r in ok))
+    saved_ok = all_front_ok - spent_ok
+    saved_share_ok = 1.0 - spent_ok / all_front_ok if all_front_ok > 0 else float("nan")
+    stats_end = stats_now() or next((s["stats"] for s in reversed(samples) if s["stats"]), None)
+    last_stats = stats_end
     rss = [s["rss_kb"] for s in samples if s["rss_kb"]]
-    last_stats = next((s["stats"] for s in reversed(samples) if s["stats"]), None)
     cold = results[0] if results else {}
     demo_front = sum(1 for r in results if r["phase"] == "demo" and r["route"] == "frontier")
 
@@ -210,7 +258,7 @@ def main() -> None:
         "",
         "```",
         f"python scripts/serve_demo.py            # tau*={health['tau']:.3f} rule {health['rule']}, "
-        f"{health['bundle'].get('featurizer')}",
+        f"{health['bundle'].get('featurizer') or 'interim (fake)'}",
         f"python scripts/19_soak_demo.py --minutes {args.minutes:g}",
         "```",
         "",
@@ -223,26 +271,56 @@ def main() -> None:
         "",
         f"| | |",
         f"|---|--:|",
-        f"| Queries completed | {len(results)} |",
+        f"| Queries attempted | {len(results)} |",
+        f"| Answered (used below) | {len(ok)} |",
         f"| Kept local | {len(local)} ({len(local) / max(1, len(ok)):.1%}) |",
         f"| Sent to frontier | {len(front)} ({len(front) / max(1, len(ok)):.1%}) |",
-        f"| Errors | {len(errs)} |",
+        f"| Served from cache | {len(hit_q)} ({len(hit_q) / max(1, len(ok)):.1%}) |",
+        f"| Live calls | {len(live_q)} ({len(live_q) / max(1, len(ok)):.1%}) |",
+        f"| Failed calls (excluded from spend, savings and latency) | {len(errs)} |",
         f"| Demo-set questions escalated | {demo_front} |",
         "",
-        "## Latency (ms, first token = start of streaming to the user)",
+        "## Spend and savings (failed calls excluded)",
         "",
-        "| | p50 | p95 | p99 | max |",
-        "|---|--:|--:|--:|--:|",
+        "Computed from the answered queries only: `cost_usd` is what serve.py charged for the "
+        "route taken, `counterfactual_usd` is what the same traffic would have cost always-frontier "
+        "(serve.py's money model). A failed call contributes to neither column, so it cannot "
+        "inflate or deflate the saving.",
+        "",
+        "| | |",
+        "|---|--:|",
+        f"| Answered queries | {len(ok)} |",
+        f"| Failed calls (excluded) | {len(errs)} |",
+        f"| Spend | ${spent_ok:.4f} |",
+        f"| Always-frontier counterfactual | ${all_front_ok:.4f} |",
+        f"| Saved | ${saved_ok:.4f} (**{saved_share_ok:.1%}**) |",
+        "",
+        "## Latency (ms, first token = start of streaming to the user; answered queries only)",
+        "",
+        "| | p50 | p95 | p99 | max | n |",
+        "|---|--:|--:|--:|--:|--:|",
         f"| First token, all | {fmt_ms(pct(ft_all, 50))} | {fmt_ms(pct(ft_all, 95))} | "
-        f"{fmt_ms(pct(ft_all, 99))} | {fmt_ms(max(ft_all) if ft_all else float('nan'))} |",
+        f"{fmt_ms(pct(ft_all, 99))} | {fmt_ms(max(ft_all) if ft_all else float('nan'))} | {len(ft_all)} |",
+        f"| First token, cache hits | {fmt_ms(pct(ft_hit, 50))} | {fmt_ms(pct(ft_hit, 95))} | "
+        f"{fmt_ms(pct(ft_hit, 99))} | {fmt_ms(max(ft_hit) if ft_hit else float('nan'))} | {len(ft_hit)} |",
+        f"| First token, live calls | {fmt_ms(pct(ft_live, 50))} | {fmt_ms(pct(ft_live, 95))} | "
+        f"{fmt_ms(pct(ft_live, 99))} | {fmt_ms(max(ft_live) if ft_live else float('nan'))} | {len(ft_live)} |",
         f"| First token, local | {fmt_ms(pct(ft_loc, 50))} | {fmt_ms(pct(ft_loc, 95))} | "
-        f"{fmt_ms(pct(ft_loc, 99))} | {fmt_ms(max(ft_loc) if ft_loc else float('nan'))} |",
+        f"{fmt_ms(pct(ft_loc, 99))} | {fmt_ms(max(ft_loc) if ft_loc else float('nan'))} | {len(ft_loc)} |",
         f"| First token, frontier | {fmt_ms(pct(ft_fro, 50))} | {fmt_ms(pct(ft_fro, 95))} | "
-        f"{fmt_ms(pct(ft_fro, 99))} | {fmt_ms(max(ft_fro) if ft_fro else float('nan'))} |",
-        f"| Whole query | {fmt_ms(pct(wall, 50))} | {fmt_ms(pct(wall, 95))} | "
-        f"{fmt_ms(pct(wall, 99))} | {fmt_ms(max(wall) if wall else float('nan'))} |",
+        f"{fmt_ms(pct(ft_fro, 99))} | {fmt_ms(max(ft_fro) if ft_fro else float('nan'))} | {len(ft_fro)} |",
+        f"| Whole query, cache hits | {fmt_ms(pct(wall_hit, 50))} | {fmt_ms(pct(wall_hit, 95))} | "
+        f"{fmt_ms(pct(wall_hit, 99))} | {fmt_ms(max(wall_hit) if wall_hit else float('nan'))} | {len(wall_hit)} |",
+        f"| Whole query, live calls | {fmt_ms(pct(wall_live, 50))} | {fmt_ms(pct(wall_live, 95))} | "
+        f"{fmt_ms(pct(wall_live, 99))} | {fmt_ms(max(wall_live) if wall_live else float('nan'))} | {len(wall_live)} |",
+        f"| Whole query, all | {fmt_ms(pct(wall, 50))} | {fmt_ms(pct(wall, 95))} | "
+        f"{fmt_ms(pct(wall, 99))} | {fmt_ms(max(wall) if wall else float('nan'))} | {len(wall)} |",
         f"| Router decision (server) | {fmt_ms(pct(router, 50))} | {fmt_ms(pct(router, 95))} | "
-        f"{fmt_ms(pct(router, 99))} | {fmt_ms(max(router) if router else float('nan'))} |",
+        f"{fmt_ms(pct(router, 99))} | {fmt_ms(max(router) if router else float('nan'))} | {len(router)} |",
+        "",
+        "Cache hits and live calls are split by `done.cached`: a cache hit streams an answer that "
+        "is already stored, a live call waits for the model. Failed calls have no first token and "
+        "are not in these rows.",
         "",
         f"Cold start: the demo set was pre-warmed by `scripts/check_demo_set.py` (T45), so its "
         f"queries read local answers from the cache; the first query overall took "
@@ -259,8 +337,10 @@ def main() -> None:
         "",
         "## Memory (server process)",
         "",
-        "`footprint` is the number that counts MLX's graphics allocations; RSS alone misses them "
-        "(the model lives in IOAccelerator memory).",
+        "`phys_footprint` (macOS `footprint -p <pid>`, falling back to `vmmap --summary`) is the "
+        "number that counts MLX's IOAccelerator allocations; RSS alone misses them, so RSS by "
+        "itself cannot support a no-leak claim. Growth in phys_footprint over the run is the "
+        "leak signal.",
         "",
         "| | start | min | max | end |",
         "|---|--:|--:|--:|--:|",
@@ -270,18 +350,22 @@ def main() -> None:
         lines += [
             f"| RSS (GB) | {rss[0] / 2**20:.2f} | {min(rss) / 2**20:.2f} | {max(rss) / 2**20:.2f} | "
             f"{rss[-1] / 2**20:.2f} |",
-            f"| Footprint (GB) | {fps[0] / 1024:.2f} | {min(fps) / 1024:.2f} | {max(fps) / 1024:.2f} | "
+            f"| phys_footprint (GB) | {fps[0] / 1024:.2f} | {min(fps) / 1024:.2f} | {max(fps) / 1024:.2f} | "
             f"{fps[-1] / 1024:.2f} |",
         ]
     elif rss:
-        lines.append(f"| RSS (GB) | {rss[0] / 2**20:.2f} | {min(rss) / 2**20:.2f} | "
-                     f"{max(rss) / 2**20:.2f} | {rss[-1] / 2**20:.2f} |")
+        lines += [
+            f"| RSS (GB) | {rss[0] / 2**20:.2f} | {min(rss) / 2**20:.2f} | "
+            f"{max(rss) / 2**20:.2f} | {rss[-1] / 2**20:.2f} |",
+            "| phys_footprint (GB) | not sampled | not sampled | not sampled | not sampled |",
+        ]
     else:
         lines.append("| – | – | – | – | – |")
     lines += [
         "",
         f"{len(samples)} samples every {args.sample_seconds:g} s over "
-        f"{duration / 60:.1f} minutes (machine: {mem_gb:.0f} GB).",
+        f"{duration / 60:.1f} minutes (machine: {mem_gb:.0f} GB"
+        + (f", phys_footprint from `{fp_tool}`" if fp_tool else ", phys_footprint NOT sampled") + ").",
         "",
         "## Errors and throttling",
         "",
@@ -292,9 +376,32 @@ def main() -> None:
             k = str(e["error"])[:80]
             by_kind[k] = by_kind.get(k, 0) + 1
         lines += [f"- {n}× `{k}`" for k, n in sorted(by_kind.items(), key=lambda x: -x[1])]
+        lines += ["",
+                  f"These {len(errs)} calls are excluded from the spend, savings and latency "
+                  "figures above: they produced no answer and charged nothing."]
     else:
         lines.append("- none: every query answered.")
-    if last_stats:
+    if stats_start and stats_end:
+        delta = {k: stats_end.get(k, 0) - stats_start.get(k, 0)
+                 for k in ("queries", "local", "frontier", "spent_usd", "all_frontier_usd")}
+        delta["saved_share"] = (1 - delta["spent_usd"] / delta["all_frontier_usd"]
+                                if delta["all_frontier_usd"] > 0 else float("nan"))
+        lines += [
+            "",
+            "Server `/stats` (cumulative; the delta is what this soak added -- the server may have "
+            "answered queries before the soak started):",
+            "",
+            "```",
+            "start: " + json.dumps(stats_start),
+            "end:   " + json.dumps(stats_end),
+            "delta: " + json.dumps(delta),
+            "```",
+            "",
+            f"The delta's saved_share is {delta['saved_share']:.1%} against the soak's own "
+            f"{saved_share_ok:.1%}: the two differ whenever the server counted a request the soak "
+            "saw as a failure, so the soak's own figure (answered queries only) is the one to quote.",
+        ]
+    elif last_stats:
         lines += [
             "",
             "Server `/stats` at the end:",
@@ -314,26 +421,31 @@ def main() -> None:
         "",
         "## Findings",
         "",
-        f"- {len(results)} queries in {duration / 60:.1f} minutes "
-        f"({len(results) / (duration / 60):.0f}/min), {len(front)} of them through the frontier API.",
-        f"- First token p50 {fmt_ms(pct(ft_all, 50))} ms, p99 {fmt_ms(pct(ft_all, 99))} ms; "
-        "local answers stream only after Qwen's k samples are done, so the local p50 is dominated "
-        "by generation, not routing.",
+        f"- {len(results)} queries attempted in {duration / 60:.1f} minutes "
+        f"({len(results) / (duration / 60):.0f}/min): {len(ok)} answered "
+        f"({len(front)} through the frontier API, {len(hit_q)} served from cache, "
+        f"{len(live_q)} live), {len(errs)} failed.",
+        f"- First token p50 {fmt_ms(pct(ft_all, 50))} ms over all answered queries; split by "
+        f"source: cache hits p50 {fmt_ms(pct(ft_hit, 50))} ms / p99 {fmt_ms(pct(ft_hit, 99))} ms "
+        f"(n={len(ft_hit)}), live calls p50 {fmt_ms(pct(ft_live, 50))} ms / p99 "
+        f"{fmt_ms(pct(ft_live, 99))} ms (n={len(ft_live)}). Local answers stream only after "
+        "Qwen's k samples are done, so local latency is dominated by generation, not routing.",
         f"- Router decision p99 {fmt_ms(pct(router, 99))} ms (target < 15 ms).",
-         ((f"- Footprint moved from {fps[0] / 1024:.2f} GB to {fps[-1] / 1024:.2f} GB "
-           f"(peak {max(fps) / 1024:.2f} GB of {mem_gb:.0f} GB) over "
-           f"{duration / 60:.1f} minutes; ") if fps else "- ")
-         + (f"RSS from {rss[0] / 2**20:.2f} to {rss[-1] / 2**20:.2f} GB "
-            f"({len(rss)} samples) shows the Python side did not leak.")
-         if rss else "- no memory samples.",
-        f"- {len(errs)} errors." if errs else "- No errors and no exhausted retries; the client's "
-        "8 rpm limiter absorbed the free-tier cap without a failed request.",
+        (f"- phys_footprint (from `{fp_tool}`) {fps[0] / 1024:.2f} → {fps[-1] / 1024:.2f} GB, "
+         f"peak {max(fps) / 1024:.2f} GB of {mem_gb:.0f} GB over {duration / 60:.1f} minutes; "
+         f"RSS {rss[0] / 2**20:.2f} → {rss[-1] / 2**20:.2f} GB ({len(rss)} samples). The "
+         "start/end/peak footprint are the numbers to quote for growth; RSS alone is not.")
+         if fps and rss else
+         ("- phys_footprint was not sampled this run (see Memory); RSS alone cannot support a "
+          "growth claim." if rss else "- no memory samples."),
+        (f"- {len(errs)} failed calls, all excluded from the spend, savings and latency figures "
+         "above.") if errs else "- No errors and no exhausted retries.",
         "",
     ]
     args.out.write_text("\n".join(lines))
-    tail = f"{len(results)} queries, {len(errs)} errors"
+    tail = f"{len(results)} queries, {len(errs)} errors, savings {saved_share_ok:.1%}"
     if fps:
-        tail += f", footprint {fps[0] / 1024:.2f}->{fps[-1] / 1024:.2f} GB (max {max(fps) / 1024:.2f})"
+        tail += f", phys_footprint {fps[0] / 1024:.2f}->{fps[-1] / 1024:.2f} GB (max {max(fps) / 1024:.2f})"
     elif rss:
         tail += f", rss {rss[0] / 2**20:.2f}->{rss[-1] / 2**20:.2f} GB"
     print(f"\nwrote {args.out} | {tail}")

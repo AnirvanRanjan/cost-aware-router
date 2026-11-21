@@ -200,3 +200,21 @@ def test_t61_forced_frontier_skips_the_local_model():
     r = d.chat("What is 3 times 4?", force="frontier")
     assert r["route"]["route"] == "frontier" and r["route"]["forced"]
     assert d.small.calls == 0 and d.large.calls == 1
+
+
+def test_done_reports_counterfactual_and_says_where_the_answer_came_from():
+    """T47: the soak needs per-query counterfactual cost and a cache-hit flag it can trust."""
+    d = _t61_demo(small=AgreeingClient("qwen3.5-4b"))
+    first = d.chat("What is 3 times 4?")["done"]
+    second = d.chat("What is 3 times 4?")["done"]
+    assert first["cached"] is False and second["cached"] is True      # local: all k samples cached
+    assert first["cost_usd"] == 0.0 and first["counterfactual_usd"] > 0
+
+    mcq = d.chat("Which planet is known as the Red Planet? A) Venus B) Mars C) Jupiter D) Saturn")["done"]
+    assert mcq["cached"] is False and mcq["counterfactual_usd"] > 0    # option scoring is a live pass
+
+    f = _t61_demo()
+    live = f.chat("A pencil costs 2 dollars. How much do 3 pencils cost?")["done"]
+    hit = f.chat("A pencil costs 2 dollars. How much do 3 pencils cost?")["done"]
+    assert live["cached"] is False and hit["cached"] is True
+    assert live["cost_usd"] > 0 and np.isclose(live["cost_usd"], live["counterfactual_usd"])
