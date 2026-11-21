@@ -233,6 +233,57 @@ python scripts/11_build_bundle.py         # writes artifacts/bundle/router.pkl
 
 ---
 
+## Reproduce the headline and the demo
+
+Checked on a fresh clone of `main` (`723ebad`) on Apple Silicon with **Python 3.13.2**:
+`pip install -r requirements.txt` installs **scikit-learn 1.8.0** (the pin in
+`requirements.txt` is load-bearing — 1.9.x refits the trees to a different τ\*).
+Only release assets are needed; the raw RouterBench dump is not.
+
+### Headline: τ\* = 8.2187, certified savings 41.3% [39.0, 43.5]
+
+```bash
+git clone https://github.com/AnirvanRanjan/cost-aware-router.git
+cd cost-aware-router
+python3 -m venv .venv && source .venv/bin/activate
+python --version                                  # 3.13.2
+pip install -r requirements.txt                   # scikit-learn==1.8.0
+
+mkdir -p artifacts/trackb
+gh release download trackb-6265adf7ffa4a602 -R AnirvanRanjan/cost-aware-router -D artifacts/trackb \
+    -p corpus.parquet -p scores.parquet -p qwen_responses.parquet \
+    -p qwen_mcq_options.parquet -p qwen_mcq_scores.parquet -p cascade_predictions.parquet
+
+python scripts/11_build_bundle.py --mode cascade_t61 --samples 3
+#   calibration tau 8.21873510404553, T41 agreement 100% on 1000 test queries
+
+python scripts/16_trackb_preview.py               # writes artifacts/trackb/scores_hard.parquet,
+#   which script 17 reads. Under the pin its refit of cascade_3sample is bit-identical to
+#   the release cascade_predictions.parquet (max |delta_hat diff| = 0.0 over 23,580 rows),
+#   so the release numbers below are unchanged.
+
+python scripts/17_t60_seed_free_wsr.py
+#   Seed-Free WSR tau*: 8.2187
+#   Test escalation: 75.9% [74.7%, 77.1%]    Test PGR: 102.8% [99.1%, 107.0%]
+#   Certified Test M1 Savings: 41.3% [39.0%, 43.5%]
+```
+
+### Demo: bundle, demo set, server
+
+Same clone and `artifacts/trackb` files as above:
+
+```bash
+pip install -r requirements-ml.txt                # mlx-lm, FastAPI, ...
+cp .env.example .env                              # add GEMINI_API_KEY; .env is git-ignored
+#   serve_demo.py refuses to start without it (RuntimeError: GEMINI_API_KEY is not set)
+
+python scripts/11_build_bundle.py --mode cascade_t61 --samples 3   # artifacts/bundle/router.pkl
+python scripts/check_demo_set.py --out-md notes/demo_set_check.md  # 24/24 as planned (~5 min)
+python scripts/serve_demo.py                                        # http://127.0.0.1:8000
+```
+
+---
+
 ## Live Demo
 
 ```bash
