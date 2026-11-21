@@ -16,7 +16,9 @@
 ---
 
 ## Slide 2: Feature Engineering — The Three-Tier Feature Space
-- **Strict Anti-Leakage Rule:** The router only sees prompt text $q$ (no benchmark names, subject labels, or dataset tags).
+- **Anti-Leakage Scope (Query-Only vs. Cascade):**
+  - *Query-Only Routers:* Strict anti-leakage rule — the router sees only prompt text $q$ with zero access to benchmark names or task metadata.
+  - *Cascade Routers:* The feature space expands to generation confidence signals + 4 question-type one-hots (`mmlu`, `gsm8k`, `arc`, `winogrande`). In the live demo, this question format is inferred automatically from prompt structure (e.g. multiple-choice option letters vs math numeric).
 - **Tier 1: Heuristic Syntactic Signals ($F_0$, 23 dimensions)**
   - Surface: token count, character count, sentence count, mean word length.
   - Structure: bracket nesting depth (code/math nesting), ASCII digit/punctuation/uppercase densities.
@@ -82,7 +84,7 @@
   - *MCQ:* 1 forward pass in MMLU format (`p_chosen`, `margin`).
   - *Arithmetic:* 3 brief sampled completions and exact consensus.
   - *Free-form:* 3 brief completions and text consensus (transparently flagged uncertified in UI).
-- **Real-World Trade-off:** Adds ~6 seconds local generation time on Apple M2 for math, but escalates only $65.8\%–75.9\%$ of test traffic (PGR $100.6\%–102.8\%$), matching certified research guarantees.
+- **Real-World Trade-off:** Adds ~6 seconds local generation time on Apple M2 for math; the deployed router escalates **75.9%** of test traffic at **102.8% PGR**, matching certified research guarantees.
 - **Software Reproducibility:** Strictly pinned `scikit-learn==1.8.0` in `requirements.txt` to guarantee tree split reproducibility across developer laptops.
 
 ---
@@ -90,6 +92,6 @@
 ## Slide 7: Summary & Lane B Deliverables
 1. **Leak-Free Pipelines:** Full $F_0, F_1, F_2$ extractors operating strictly on input text without benchmark labels.
 2. **Calibrated Two-Head MLP:** Multi-task gap loss and isotonic calibration cutting ECE by up to $56.7\%$.
-3. **Identified Information Limits:** Proved mathematically and empirically why query-only routers hit a ceiling as models improve.
+3. **Identified Information Limits:** Demonstrated empirically why query-only routers hit a ceiling as models improve.
 4. **Cascade Confidence Breakthrough:** 3-sample self-consistency + option logit scoring unlocked **41.3% certified spend savings**.
 5. **Live Production Deployment:** Delivered the verified D-15 bundle running sub-10ms routing decisions on Apple Silicon M2.

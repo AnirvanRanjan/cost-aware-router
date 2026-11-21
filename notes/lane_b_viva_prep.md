@@ -84,10 +84,14 @@ This counter-intuitive failure is explained by **extreme dimensionality imbalanc
    - If the underlying mathematical derivation is sound, independent rollouts converge to the same final number (`agree = 1.0`).
    - If the model is guessing or stumbling on complex multi-step arithmetic, different rollouts follow different calculation paths and diverge (`agree = 0.33` or $0.67$).
 
-3. **Empirical Validation Failure of 1-Sample on the Demo Set (Task T45):**
+3. **Empirical Validation Failure and Three-Part Demo Fix (Task T45 / Decision D-15):**
    - In our live demo tests (`notes/demo_set_check.md`, `notes/demo_set_check_run2.md`), the 1-sample bundle escalated **8 of 10** easy questions in run 1 and **10 of 10** easy questions in run 2, even though Qwen got all 10 right!
    - Natural conversational answers have lower token predictability than formulaic math, causing a 1-sample threshold to mistake natural prose for uncertainty.
-   - Rebuilding the demo around 3-sample agreement (Decision D-15) stabilized routing, allowing the demo to escalate only $65.8\%–75.9\%$ of test queries while hitting $102.8\%$ PGR.
+   - We resolved this via a three-part fix:
+     a. **Option Logit Scoring:** 1 forward pass on MMLU option letters instead of open-ended generation.
+     b. **3-Answer Self-Consistency:** Generating 3 brief completions to check consensus for arithmetic reasoning.
+     c. **Rebuilt Demo Set:** Selecting representative questions directly from the Track B test distribution rather than ad-hoc prompts.
+   - Under this deployed bundle (`scikit-learn==1.8.0`), the router escalates **75.9%** of queries on the Track B test split at a realized test PGR of **102.8%**.
 
 4. **Acceptable Latency Overhead on Apple Silicon M2:**
    - Generating 3 brief arithmetic answers takes approximately **$6\text{ seconds}$** on Apple M2 (running at 28.5 tokens/sec).
@@ -99,10 +103,10 @@ This counter-intuitive failure is explained by **extreme dimensionality imbalanc
 
 ### The Core Answer:
 
-1. **Histogram Binning and Split Tie-Breaking Discrepancies:**
-   - `HistGradientBoostingRegressor` is a histogram-based gradient-boosting algorithm (similar to LightGBM). Continuous numerical inputs are discretized into 256 integer bins prior to tree building.
-   - Between scikit-learn versions 1.8.0 and 1.9.1, the internal implementation of histogram bin edge calculation, numerical tie-breaking, and quantile boundary construction was refined.
-   - Consequently, fitting the exact same model on the exact same training split with identical hyperparameters and random seeds produces slightly different tree split points.
+1. **Internal Library Changes Across Minor Versions:**
+   - `HistGradientBoostingRegressor` is a histogram-based gradient-boosting algorithm. Continuous numerical inputs are discretized into integer bins prior to tree building.
+   - Between scikit-learn versions 1.8.0 and 1.9.1, an internal library change occurred in the histogram gradient boosting implementation.
+   - Consequently, fitting the exact same model on the exact same training split with identical hyperparameters and random seeds produces slightly different tree split points across library versions. Pinning `scikit-learn==1.8.0` in `requirements.txt` eliminates this discrepancy completely across all environments.
 
 2. **Impact on Model Predictions:**
    - Comparing the predictions on the Track B test set (`notes/d15_demo_router.md`), the release model (fitted under scikit-learn 1.8.0) and the refitted model (under 1.9.1) exhibit small predicted gap differences of up to $\pm 0.15$ on individual queries.
