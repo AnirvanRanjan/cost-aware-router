@@ -1,10 +1,16 @@
 # Chapter 6 — Local Inference, the GPU Run, Serving and Demo Performance
 
+> **Author Declaration & Attributions:** This chapter was authored by Kartiken Sharma (Lane D: Local Inference, Serving, and Demo Performance). In accordance with University of Petroleum and Energy Studies (UPES) guidelines on academic integrity and generative artificial intelligence assistance:
+> - **Use of AI Tools:** Generative AI tools were used to assist in drafting, structuring, and refining the text of this chapter, as well as formatting tables and KaTeX expressions from experimental logs.
+> - **Attribution of Work:**
+>   - **Lane D (Author's Work):** The edge deployment of Qwen3.5-4B (4-bit MLX, quantisation and throughput measurements), the H100 run that generated Track B's Qwen answers (D-13, `gpu/README.md`), the serving stack (`router/serve.py`, `scripts/serve_demo.py`), the SQLite answer cache and offline mode (T46), the web page and its Safari check (T43), the demo-set check (T45), the one-hour soak test and its instrumentation (T47, `scripts/19_soak_demo.py`), the server-path replay of the certified bundle (T44, `scripts/15_replay_demo.py`), and the fresh-clone reproducibility check (T55) were conducted by Lane D.
+>   - **Collaborative Project Artifacts:** Dataset curation, the frozen splits, and the Track B release `trackb-6265adf7ffa4a602` (T35) were developed by Lane A (Anirvan Ranjan). The feature extractors, the `cascade_t61` router whose decisions this chapter serves, and its bundle build (T41) were engineered by Lane B (Huwaid Siddiqui). Threshold selection, the WSR bound and the certified $\tau^*$ reported here were derived by Lane C (Sarthak Jakhmola).
+
 > **DRAFT for Kartiken (lane D, task T53).** Written from `notes/m2_checks.md`,
 > `notes/runbook_trackb.md`, `gpu/README.md`, `artifacts/trackb/gpu_manifest.json`,
 > `router/serve.py` and the T42/T45/T47 run logs. Every number names the script or note it comes
-> from. Rewrite it in your own voice and check UPES's rules on declaring AI assistance before
-> submission.
+> from. The Author Declaration above follows chapter 5's block — check it against UPES's rules and
+> fix the attribution list before submission. Rewrite the prose in your own voice.
 >
 > **Facts updated 2026-11-21/22:** demo set 24/24 on the pinned bundle, T44 replay result added,
 > scikit-learn pin spelled out in 6.8, the T47 soak re-run (2026-11-21) written in with its
@@ -207,8 +213,11 @@ as well as the happy path.
 The router itself stays well under the 15 ms target (p99 6 ms, max 17 ms); a user's wait is the
 model, not the router — cache hits stream in 6 ms while a live call waits about a second for its
 first token and up to 9.4 s at p99. Spend over the answered queries was **$0.2147** against a
-**$0.5850** always-frontier counterfactual, i.e. **63.3%** saved; the 457 failed calls contribute
-to neither column. **Memory:** RSS stayed between 0.08 and 0.24 GB (0.13 → 0.11 GB), but RSS
+**$0.5850** always-frontier counterfactual, i.e. **63.3%** saved — **observed on demo traffic, not
+a certified figure**: one hour on one machine, 76% of the answered queries served from cache, no
+WSR bound behind it. The certified saving for this router is **41.3% [39.0, 43.5]** on the
+held-out test split (Chapter 5; `notes/t60_certification_report.md`). The 457 failed calls
+contribute to neither column. **Memory:** RSS stayed between 0.08 and 0.24 GB (0.13 → 0.11 GB), but RSS
 misses MLX's GPU allocations — `phys_footprint` went **0.15 → 11.00 GB** over the hour, 10 GB of
 the peak being dirty `IOAccelerator (graphics)` across 5,193 regions. That peak is not an
 unbounded leak: measured again the next day against the same server it was 10.6 GB and fell to

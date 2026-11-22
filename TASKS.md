@@ -114,8 +114,8 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T53 | D | Chapter 6, Local inference, the GPU run, serving, demo performance | 🔶 draft in `thesis/06_system.md`; facts updated 2026-11-21 (demo set 24/24, T44 replay, sklearn pin, soak marked PENDING T47 re-run, chapter commands re-run); needs Kartiken's own wording |
 | T54 | A | Ch. 1, 2, 7, 8 drafts ✅ (ch. 1 has the Qwen preview numbers); own wording; merge all chapters | 🔶 |
 | T55 | D | Reproducibility: one command per figure, tested on a fresh clone. scikit-learn pinned to 1.8.0 in `requirements.txt`: the release router and tau* 8.2187 came from 1.8.0; a 1.9.1 refit certifies 48.3% vs 41.3% (`notes/d15_demo_router.md`) | ✅ fresh-clone repro verified 2026-11-21 (Python 3.13.2, sklearn 1.8.0): bundle tau* 8.21873510404553, T41 100%, `17_t60_seed_free_wsr` 41.3% [39.0, 43.5], demo set 24/24 — README "Reproduce the headline and the demo" |
-| T56 | All | Slides | ⬜ |
-| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | ⬜ |
+| T56 | All | Slides | 🔶 lane D draft ready: `notes/lane_d_presentation_slides.md` (12 slides, every number sourced) — Kartiken to cut and speak |
+| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | 🔶 lane D draft ready: `notes/lane_d_viva_prep.md` (all five T57 questions + serving/memory/number-confusion set) |
 | T58 | A | Repo public (D-09), MIT licence (D-10) | ✅ |
 
 ---

@@ -42,6 +42,11 @@ Computed from the answered queries only: `cost_usd` is what serve.py charged for
 | Always-frontier counterfactual | $0.5850 |
 | Saved | $0.3703 (**63.3%**) |
 
+> **The 63.3% is observed on demo traffic, not a certified figure**: one hour, one machine, 76%
+> of the answered queries served from cache, and no WSR bound behind it. The certified saving for
+> this router is **41.3% [39.0, 43.5]** on the held-out test split
+> (`notes/t60_certification_report.md`, README "Reproduce the headline and the demo").
+
 ## Latency (ms, first token = start of streaming to the user; answered queries only)
 
 | | p50 | p95 | p99 | max | n |
