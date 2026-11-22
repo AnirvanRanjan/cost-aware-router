@@ -36,7 +36,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | **A** · Ani | Push; run T45 run 3 on the Mac with the D-15 bundle (`python scripts/11_build_bundle.py --mode cascade_t61 --samples 3`, then `python scripts/check_demo_set.py --out-md notes/demo_set_check_run3.md`). Rewrite ch. 1–3, 7–8 in your own words. | The demo set must pass before the video |
 | **B** · HSID | Review D-15: the demo now rebuilds your T61 `cascade_3sample` router (`--mode cascade_t61`, `router/signals.py`, tested against `16_trackb_preview.py`); your `--mode cascade` bundle stays as the D-14 comparison. Rewrite ch. 4 in your own words. | The demo router is yours |
 | **C** · Sarthak | Seed-free bound is now `select_tau(method="wsr_avg")` in `router/threshold.py` (ported from your script 17, identical p-values): check it. **T28**: lock numbers from the release file and record the scikit-learn version (a refit certifies 48.3%, the release file 41.3%: `notes/d15_demo_router.md`). Move `chapter_C_draft.md` to `thesis/05_results.md`. | The headline number is his |
-| **D** · Kartiken | Soak ✅, offline ✅, Safari ✅, sklearn 1.8.0 pinned on the M2 (tau* 8.219) ✅, demo set 24/24 on the M2 ✅. **Next:** turn on billing for the Gemini key and confirm (then the T47 soak re-run); **T48** backup video; ch. 6 in your own words (T53 facts are updated). | The video is the critical path |
+| **D** · Kartiken | Soak ✅, offline ✅, Safari ✅, sklearn 1.8.0 pinned on the M2 (tau* 8.219) ✅, demo set 24/24 on the M2 ✅. **Next (Kartiken, in person):** turn on billing for the Gemini key (free tier still 20/day → 5/min — blocks the clean T47 soak); check the attribution list in the declaration and fix his surname; rewrite ch. 6, the slides and the viva notes in his own words (T53 facts are updated); **T48** backup video; **T49** two timed dry runs. | The video is the critical path |
 
 ---
 
@@ -100,7 +100,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T44 | C | Replay mode: 200 test questions through the live router, matches offline (PR #17) | ✅ merged; re-run by D with the pinned T41 cascade bundle (2026-11-20): 200/200 decisions match offline, 37.3% savings, `notes/replay_report_d15.md` |
 | T45 | A | Demo set checked against the final bundle (`scripts/check_demo_set.py`) | ✅ 24/24 on the M2 (sklearn 1.8.0, tau* 8.219, `notes/demo_set_check_m2.md`); 9 easy, 8 hard (escalated because Qwen is unsure), 4 free-form, 3 chat |
 | T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | ✅ after the 2026-11-19 soak (48 frontier + 234 local rows): all 24 demo-set questions answer with `--offline`; replay queries throttled by the 20/day cap were not cached |
-| T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | 🔶 2026-11-19 run superseded (1.9.1 bundle tau* 9.657, 432 HTTP 429s, RSS-only memory); `scripts/19_soak_demo.py` now samples phys_footprint, splits cache/live latency and excludes failed calls — **re-run waits for Gemini billing** |
+| T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | 🔶 2026-11-21 re-run with the fixed script: 1010 queries, 553 answered, cache/live split, phys_footprint 0.15→11.00 GB, savings **63.3%** (answered only) — but the frontier arm was still free-tier capped (**457× HTTP 429**; `quotaId` FreeTier, 20/day on 11-21, 5/min on 11-22) so **billing is still off**; clean re-run pending (`notes/demo_perf.md`) |
 | T48 | All | Backup video of the full demo | ⬜ |
 | T49 | All | Two timed dry runs, one on a projector | ⬜ |
 
@@ -114,8 +114,8 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T53 | D | Chapter 6, Local inference, the GPU run, serving, demo performance | 🔶 draft in `thesis/06_system.md`; facts updated 2026-11-21 (demo set 24/24, T44 replay, sklearn pin, soak marked PENDING T47 re-run, chapter commands re-run); needs Kartiken's own wording |
 | T54 | A | Ch. 1, 2, 7, 8 drafts ✅ (ch. 1 has the Qwen preview numbers); own wording; merge all chapters | 🔶 |
 | T55 | D | Reproducibility: one command per figure, tested on a fresh clone. scikit-learn pinned to 1.8.0 in `requirements.txt`: the release router and tau* 8.2187 came from 1.8.0; a 1.9.1 refit certifies 48.3% vs 41.3% (`notes/d15_demo_router.md`) | ✅ fresh-clone repro verified 2026-11-21 (Python 3.13.2, sklearn 1.8.0): bundle tau* 8.21873510404553, T41 100%, `17_t60_seed_free_wsr` 41.3% [39.0, 43.5], demo set 24/24 — README "Reproduce the headline and the demo" |
-| T56 | All | Slides | ⬜ |
-| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | ⬜ |
+| T56 | All | Slides | 🔶 lane D draft ready: `notes/lane_d_presentation_slides.md` (12 slides, every number sourced) — Kartiken to cut and speak |
+| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | 🔶 lane D draft ready: `notes/lane_d_viva_prep.md` (all five T57 questions + serving/memory/number-confusion set) |
 | T58 | A | Repo public (D-09), MIT licence (D-10) | ✅ |
 
 ---
