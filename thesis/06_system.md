@@ -6,8 +6,9 @@
 > from. Rewrite it in your own voice and check UPES's rules on declaring AI assistance before
 > submission.
 >
-> **Facts updated 2026-11-21:** demo set 24/24 on the pinned bundle, T44 replay result added,
-> scikit-learn pin spelled out in 6.8, the 2026-11-19 soak marked *PENDING T47 re-run*, and every
+> **Facts updated 2026-11-21/22:** demo set 24/24 on the pinned bundle, T44 replay result added,
+> scikit-learn pin spelled out in 6.8, the T47 soak re-run (2026-11-21) written in with its
+> quota evidence and a *PENDING throttling-free re-run* marker, offline re-checked 24/24, and every
 > command under "Reproducing this chapter" re-run (except the H100 line).
 
 ## 6.1 What the system has to do
@@ -180,35 +181,39 @@ server measured p99 **7.6 ms** against a 15 ms target (`notes/m2_checks.md`, T42
 adds option-scoring or three sampled answers *before* the decision, so its wait is dominated by
 generation, not by the model's inference on the features.
 
-**One-hour soak (T47).** *[PENDING T47 RE-RUN — do not quote the numbers below. The run of
-2026-11-19 used the scikit-learn **1.9.1** bundle ($\tau^*$ 9.657, not the certified 8.2187) and
-the Gemini free tier; `notes/demo_perf.md` marks it superseded. The re-run waits for billing to be
-switched on and replaces this paragraph and its table.]*
+**One-hour soak (T47).** *[PENDING THROTTLING-FREE RE-RUN — billing for the Gemini key is still
+off, so the frontier arm of the run below was free-tier capped: 457 of 1,010 calls failed with
+HTTP 429 (`quotaId` `...FreeTier`, 20 requests/day on 2026-11-21, still 5/min on 2026-11-22).
+Local route, latency split and memory are unaffected; spend and savings are computed from the
+answered queries only. `notes/demo_perf.md` carries the quota evidence.]*
 
 `scripts/19_soak_demo.py` drives the running server for an hour: every `configs/demo_set.yaml`
 query first, then 200 replay-set test questions (seed 42), then a shuffled mix, while a background
-thread samples the process's memory and `/stats` every 30 s. The run also fills T46's cache,
-because each frontier answer that arrives lands under the keys `--offline` will look up. The run
-of 2026-11-19 (14:22–15:22 IST) completed **929 queries** (about 15/min): 299 answered locally and
-198 by the frontier, with **432 HTTP 429 errors** once the Gemini free tier's 20/day cap was
-reached. The driver recorded those errors and kept going rather than aborting, so the run measures
-throttling as well as the happy path.
+thread samples the process's `phys_footprint`, its RSS and `/stats` every 30 s. The run also fills
+T46's cache, because each frontier answer that arrives lands under the keys `--offline` will look
+up. The run of 2026-11-21 (10:50–11:50 IST, `notes/demo_perf.md`) attempted **1,010 queries**
+(17/min): **553 answered** — 263 local (47.6%), 290 frontier (52.4%), 421 of them served from
+cache and 132 live — with **457 HTTP 429 errors** once the free tier's daily cap was reached. The
+driver records those errors and keeps going rather than aborting, so the run measures throttling
+as well as the happy path.
 
-| Measured over the hour | p50 | p95 | p99 |
+| Measured over the hour (answered queries only) | p50 | p95 | p99 |
 |---|--:|--:|--:|
-| First token, all successful queries | 7 ms | 4,737 ms | 7,321 ms |
-| First token, local route | 799 ms | 2,478 ms | 5,572 ms |
-| Router decision (server) | 3 ms | 5 ms | 6 ms |
+| First token, cache hits (n=421) | 6 ms | 1,031 ms | 1,369 ms |
+| First token, live calls (n=132) | 1,102 ms | 7,217 ms | 9,409 ms |
+| First token, local route (n=263) | 6 ms | 2,040 ms | 2,634 ms |
+| Router decision (server, n=553) | 4 ms | 5 ms | 6 ms |
 
 The router itself stays well under the 15 ms target (p99 6 ms, max 17 ms); a user's wait is the
-local model's three samples, which stream only after Qwen has finished them (6.5). The first query
-of the run took 3,150 ms, and the five slowest were all frontier calls that ended in 429 after
-roughly 15 s. **Memory:** RSS stayed at **0.11 GB from start to end** (min 0.06, max 0.13 GB across
-119 samples) — RSS only, so it does not include MLX's GPU allocations and is not on its own
-evidence of no leak; the re-run samples `phys_footprint` instead (`scripts/19_soak_demo.py`).
-Server `/stats` at the end reported 990 queries, p99 router latency 6.3 ms, and 73% saved against
-always-frontier list prices — that spend and savings figure mixes the 432 failed calls into both
-sides and is recomputed from answered queries only by the re-run.
+model, not the router — cache hits stream in 6 ms while a live call waits about a second for its
+first token and up to 9.4 s at p99. Spend over the answered queries was **$0.2147** against a
+**$0.5850** always-frontier counterfactual, i.e. **63.3%** saved; the 457 failed calls contribute
+to neither column. **Memory:** RSS stayed between 0.08 and 0.24 GB (0.13 → 0.11 GB), but RSS
+misses MLX's GPU allocations — `phys_footprint` went **0.15 → 11.00 GB** over the hour, 10 GB of
+the peak being dirty `IOAccelerator (graphics)` across 5,193 regions. That peak is not an
+unbounded leak: measured again the next day against the same server it was 10.6 GB and fell to
+**2.8 GB after 30 further local generations**, so the GPU pool grows under sustained load and
+shrinks again. Quote it as "up to ~11 GB of GPU-side footprint on a 16 GB machine", not as a leak.
 
 **Demo set (T45).** `scripts/check_demo_set.py` routes every planned demo query through the same
 code path as the server. On the M2 with the certified bundle — scikit-learn 1.8.0,
@@ -237,20 +242,23 @@ a same-named stand-in: a cached frontier answer streams normally, and an uncache
 clear "offline mode: this frontier answer is not cached" error instead of a silent hang. The cache
 is filled by running the demo set and the replay set once against the live server — exactly what
 the T47 soak does — so the fill is a side effect of a test the project already needed. The cache
-holds **48 frontier and 258 local answers** (counted in `artifacts/cache/demo.sqlite` on
-2026-11-21; the soak-era count was 234 local), and **all 24 demo-set questions answer offline**:
-re-checked through `/chat` against the offline server on 2026-11-21, 24/24 answered, 0 errors.
-Replay-set questions whose frontier call was throttled were not cached, so an offline replay must
-skip those.
+holds **68 frontier and 258 local answers** (counted in `artifacts/cache/demo.sqlite` on
+2026-11-22, after the soak; the 2026-11-19 run had left 48/234), and **all 24 demo-set questions
+answer offline**: re-checked through `/chat` against the offline server on 2026-11-22, 24/24
+answered, 0 errors. Replay-set questions whose frontier call was throttled were not cached, so an
+offline replay must skip those.
 
 ## 6.8 Limitations
 
-- **The free tier is a dependency.** The demo calls Gemini's free tier; the T47 soak hit its 20/day
-  cap and recorded 432 HTTP 429 errors within the hour, so its frontier latency, spend and
-  savings figures are inclusive of those failures and throttled calls. For a live demo the API key
-  should have billing enabled (the cost is a few cents); if the service still disappears or
-  tightens mid-defence, the offline mode of 6.7 is the fallback and the cache must have been filled
-  beforehand.
+- **The free tier is a dependency.** The demo calls Gemini's free tier: the key's project has no
+  billing, and the quota errors say so exactly — `GenerateRequestsPerDayPerProjectPerModel-FreeTier`
+  with a limit of **20 requests/day** on 2026-11-21, and the same key still returning
+  `GenerateRequestsPerMinutePerProjectPerModel-FreeTier` with a limit of **5/min** on 2026-11-22.
+  The 2026-11-21 soak recorded **457 HTTP 429 errors** within the hour, so its frontier latency and
+  savings figures describe the throttled path (they exclude the failures). For a live demo, the
+  video and the defence, the API key needs billing enabled (the cost is a few cents); if the
+  service still disappears or tightens mid-defence, the offline mode of 6.7 is the fallback and the
+  cache must have been filled beforehand.
 - **The demo set moves with the sampler.** The router reads Qwen's live answers, so a question's
   route can differ from the check's (24/24 on this machine as of the 1.8.0 bundle). The check is
   re-run before every demo, and the spares are verified on the demo machine before they are added.
