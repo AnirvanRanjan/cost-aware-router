@@ -264,6 +264,29 @@ class FakeClient:
             yield w if i == 0 else " " + w
 
 
+def set_mlx_cache_limit(gb: float | None = None) -> float | None:
+    """Cap MLX's GPU buffer cache (T47: the server's footprint reached 11 GB of 16 GB in an hour).
+
+    MLX keeps freed GPU buffers for reuse; without a limit that pool can grow to most of the Mac's
+    memory under sustained use. The cap only bounds the *cache* of unused buffers, not the model or
+    live activations. Set MLX_CACHE_LIMIT_GB in the environment (default 2; 0 = MLX's default).
+    Returns the limit applied in GB, or None if MLX is unavailable.
+    """
+    try:
+        import mlx.core as mx
+    except ImportError:
+        return None
+    gb = float(os.environ.get("MLX_CACHE_LIMIT_GB", "2")) if gb is None else float(gb)
+    if gb <= 0:
+        return None
+    limit = int(gb * 1024**3)
+    setter = getattr(mx, "set_cache_limit", None) or getattr(getattr(mx, "metal", None), "set_cache_limit", None)
+    if setter is None:
+        return None
+    setter(limit)
+    return gb
+
+
 class MLXClient:
     """Local generation on Apple Silicon via mlx-lm. Loads the model once, on first use."""
 
@@ -282,6 +305,7 @@ class MLXClient:
                 raise ImportError("mlx-lm is needed for local models and runs only on Apple Silicon: "
                                   "pip install mlx-lm") from e
             self._model, self._tok = load(self.path)
+            set_mlx_cache_limit()
         return self._model, self._tok
 
     def format(self, prompt: str, params: GenParams) -> str:
