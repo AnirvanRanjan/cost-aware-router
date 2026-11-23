@@ -16,9 +16,10 @@ split, not read off the test set.
 
 > **Status (Nov 2026):** the development pair, **Mixtral-8x7B vs GPT-4**, uses RouterBench's stored
 > answers. The headline pair, **Qwen3.5-4B vs GPT-4**, now has Qwen's own answers (Track B, generated on
-> an H100, D-13). First headline preview: a cascade router on Qwen's own confidence saves **47.5%
-> [45.4, 49.7] with the guarantee**, about 1.9× cheaper (`notes/trackb_results.md`). Numbers are locked
-> only at T28.
+> an H100, D-13). **Locked headline (T28):** a cascade router on Qwen's own confidence (3 answers,
+> option probability) saves **41.3% [39.0, 43.5] of API spend with the guarantee** (PGR ≥ 0.95 with 95%
+> confidence; test PGR 102.8%), about 1.7× cheaper, or 28.4% counting the laptop's own cost
+> (`notes/t27_t28_locked_numbers.md`, thesis ch. 5). The live demo runs this exact router (D-15).
 
 ---
 

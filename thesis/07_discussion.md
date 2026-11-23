@@ -12,19 +12,19 @@ On our primary edge-deployment benchmark—arbitrating between local Qwen3.5-4B 
 |---|---|---|--:|--:|:---:|
 | **Cascade Router (3-sample)** | Calibrated via Seed-Free WSR | **Yes ($\mathbb{P} \ge 0.95$)** | **102.8% [99.1, 107.0]** | **41.3% [39.0, 43.5]** | **1.7×** |
 | **Cascade Router (3-sample)** | Post-hoc Test Curve Sweep | None (Retrospective) | 95.0% | 78.9% | 4.7× |
-| **Question-Only Router (F2)** | Calibrated via Seed-Free WSR | **Yes ($\mathbb{P} \ge 0.95$)** | 98.6% | 2.5% [1.8, 3.1] | ≈1.0× |
+| **Question-Only Router (F2)** | Calibrated via Seed-Free WSR | **Yes ($\mathbb{P} \ge 0.95$)** | 98.6% | 2.1% [1.5, 2.7] | ≈1.0× |
 | **Question-Only Router (F2)** | Post-hoc Test Curve Sweep | None (Retrospective) | 95.0% | 21.1% | 1.3× |
 
 These findings provide a clear resolution to our investigation:
 
 1. **The Target Ratio is Achieved on Test Curves, but Constrained under Formal Guarantees:** The initial engineering aspiration of a 2× to 5× cost reduction at $\text{PGR} \ge 0.95$ is readily achieved if operating thresholds are scanned along the test curve (78.9% savings, or a 4.7× cost reduction). However, when operating cutoffs are locked *strictly on calibration data* under finite-sample concentration guarantees, the certified cost reduction settles at **41.3% [39.0%, 43.5%]** (a 1.7× reduction).
-2. **The Discrepancy is the Price of Statistical Safety:** We emphasize that the gap between 78.9% and 41.3% does not represent a failure of the router, but rather the rigorous mathematical premium required to eliminate deployment risk. The vast majority of published routing literature [@ding2024hybrid; @ong2025routellm] reports uncalibrated test curves. Our findings demonstrate that deploying such uncertified operating points in clinical or legal environments exposes organizations to severe real-world failure rates.
+2. **The Discrepancy is the Price of Statistical Safety:** We emphasize that the gap between 78.9% and 41.3% does not represent a failure of the router, but rather the rigorous mathematical premium required to eliminate deployment risk. The vast majority of published routing literature [@ding2024hybrid; @ong2025routellm] reports uncalibrated test curves. Our results show why this matters: an operating point picked on the test curve has no guarantee that it will keep 95% of the frontier model's quality on new traffic.
 
 ---
 
 ## 7.2 The Structural Limitations of Question-Only Routing
 
-A major negative finding of this thesis is the near-total failure of pre-execution query routers to deliver meaningful certified savings on high-capacity edge models. Across all evaluated input representations—shallow heuristics, lexical n-grams, dense BGE embeddings, and two-head neural classifiers—question-only routing delivered a modest 4% to 9% certified savings on the older Mixtral pair, and collapsed to an imperceptible **0.5% to 2.5% certified savings on Qwen3.5-4B** (`notes/qwen_query_report.md`).
+A major negative finding of this thesis is the near-total failure of pre-execution query routers to deliver meaningful certified savings on high-capacity edge models. Across all evaluated input representations—shallow heuristics, lexical n-grams, dense BGE embeddings, and two-head neural classifiers—question-only routing delivered a modest 4% to 9% certified savings on the older Mixtral pair, and collapsed to **0.5% to 2.1% certified savings on Qwen3.5-4B** (`notes/qwen_query_report.md`, Chapter 5 Table 5.1).
 
 Three structural mechanisms explain this phenomenon:
 
@@ -63,17 +63,17 @@ On GSM8K, when all three stochastic generations from Qwen3.5-4B reach consensus 
 Similarly, on multiple-choice benchmarks, when the top option probability exceeds $p \ge 0.90$ (49% of all test questions), local accuracy reaches **94.2%**, against **58.5%** on lower-probability completions. By training gradient-boosted decision trees over these internal indicators, the cascade router operates on direct measures of epistemic uncertainty rather than external textual proxies.
 
 ### 7.3.2 Cross-Domain Escalation Heterogeneity
-Because the calibrated threshold $\tau^*$ is optimized across the pooled corpus, escalation behavior adapts dynamically to domain difficulty (`notes/trackb_cascade_report.md`):
-- **GSM8K:** Retains **46.6%** local execution, exploiting strong self-consistency on structured math.
-- **ARC-Challenge:** Retains **30.3%** local execution on science reasoning.
-- **MMLU:** Retains **18.1%** local execution due to broad multidisciplinary variance.
-- **Winogrande:** Escalates **98.4%** of prompts (retaining only 1.6% locally), reflecting Qwen’s baseline weakness on adversarial pronoun disambiguation.
+Because the calibrated threshold $\tau^*$ is optimized across the pooled corpus, escalation behaviour differs sharply by domain (release predictions at $\tau^* = 8.2187$, test split):
+- **GSM8K:** keeps **41.8%** of questions local, saving **47.0%** of API spend, thanks to strong self-consistency on structured maths.
+- **ARC-Challenge:** keeps **26.4%** local, saving **34.0%**.
+- **MMLU:** keeps **16.1%** local, saving **19.1%**, reflecting its broad mix of subjects.
+- **Winogrande:** escalates **98.4%** of questions (saving 1.6%), reflecting Qwen's weakness on pronoun disambiguation.
 
 ### 7.3.3 The Real-World Overhead of Cascading
 While cascades resolve the accuracy challenge, they impose two physical overheads that must be managed in production:
 
 1. **Compounded Latency on Escalated Prompts:** Every escalated prompt must execute locally before invoking the cloud endpoint. For multiple-choice questions, the local pass requires only a single forward logit evaluation ($<50$ ms). However, generating a 110-token mathematical solution on an Apple Silicon M2 processor requires approximately **4.8 to 5.2 seconds** end-to-end (averaging 23 tokens/second during interactive decoding, `notes/m2_checks.md`). For the 75.9% of queries escalated at the certified operating point, the user incurs this localized latency penalty prior to cloud dispatch.
-2. **Computational Energy and Token Spend:** Generating three stochastic candidate paths consumes three times the localized compute energy. In response to this latency and energy constraint, our architecture initially formulated a **single-sample cascade** (Decision D-14), which achieves **27.8% [25.9%, 29.6%] certified spend savings** while eliminating multi-sample decoding latency (`notes/trackb_cascade_report.md`). However, live validation on conversational inputs revealed that answer-text features were brittle under prompt formatting shifts, escalating 8 of 10 (run 1) and all 10 of 10 (run 2) easy questions that Qwen answered correctly (`notes/demo_set_check.md`, `notes/demo_set_check_run2.md`), while escalating 85.2% across the wider Track B test split (`notes/d15_demo_router.md`). Consequently, Decision D-15 unified the production demonstration with the certified 3-sample research router (`cascade_3sample`), which executes 3 brief samples on arithmetic and a single logit pass on multiple-choice, while retaining the 1-sample bundle as a latency-optimized comparative baseline.
+2. **Computational Energy and Token Spend:** Generating three stochastic candidate paths consumes three times the localized compute energy. In response to this latency and energy constraint, our architecture initially formulated a **single-sample cascade** (Decision D-14), which achieves **29.5% [27.8%, 31.5%] certified spend savings** when scored on the single answer the user actually receives, while eliminating multi-sample decoding latency (Chapter 5, Table 5.1). However, live validation on conversational inputs revealed that answer-text features were brittle under prompt formatting shifts, escalating 8 of 10 (run 1) and all 10 of 10 (run 2) easy questions that Qwen answered correctly (`notes/demo_set_check.md`, `notes/demo_set_check_run2.md`), while escalating 85.2% across the wider Track B test split (`notes/d15_demo_router.md`). Consequently, Decision D-15 unified the production demonstration with the certified 3-sample research router (`cascade_3sample`), which executes 3 brief samples on arithmetic and a single logit pass on multiple-choice, while retaining the 1-sample bundle as a latency-optimized comparative baseline.
 
 ---
 
@@ -115,15 +115,15 @@ Our primary cost model (M1) assumes that localized edge inference is economicall
          ▼                                                 ▼
 ┌───────────────────────────────┐         ┌───────────────────────────────┐
 │     Cloud Batch Endpoints     │         │    Amortized Edge Hardware    │
-│  - 50% discount on API lists  │         │  - Device purchase ($1,299)   │
-│  - Multi-hour queue latency   │         │  - 15W active power draw      │
-│  - Router is 18.5% more costly│         │  - M2 savings settle at 36.5% │
+│  - 50% discount on API lists  │         │  - Device purchase ($1,199)   │
+│  - Multi-hour queue latency   │         │  - 20 W assumed power draw    │
+│  - Router is ~17% more costly │         │  - M2 savings settle at 28.4% │
 └───────────────────────────────┘         └───────────────────────────────┘
 ```
 
-1. **The Cloud Batch API Paradox:** Major cloud vendors provide asynchronous Batch APIs at a 50% discount relative to interactive endpoints. Against a continuous batch cloud pipeline, our certified real-time router is **18.5% more expensive** than simply submitting all queries to the batch cloud service (`notes/trackb_cascade_report.md`). Consequently, model routers provide economic utility strictly for interactive, real-time user-facing applications; non-urgent background tasks should invariably leverage asynchronous cloud batching.
-2. **Full Hardware Amortization (Cost Model M2):** Factoring in device acquisition costs ($1,299 capital expenditure amortized over 3 years), battery degradation, and 15W active electrical consumption, the certified cost reduction shifts from **41.3% down to 36.5%** at our benchmark throughput of 28.5 tokens/second (Chapter 5).
-3. **Break-Even Generation Velocity:** Against modern low-cost frontier models such as Gemini 3 Flash ($0.075 / $0.30 per million tokens), the break-even local generation speed is **12.1 tokens/second**. Because Apple Silicon M2 achieves 23 tokens/second end-to-end and 29 tokens/second during decoding (`notes/m2_checks.md`), localized edge execution remains demonstrably cheaper than cloud invocation even when benchmarked against hyper-optimized commercial APIs.
+1. **The Cloud Batch API Paradox:** Major cloud vendors provide asynchronous Batch APIs at a 50% discount relative to interactive endpoints. Against a continuous batch cloud pipeline, our certified real-time router (which pays 58.7% of the list-price bill) is **about 17% more expensive** than simply submitting all queries to the batch cloud service at half price. Consequently, model routers provide economic utility strictly for interactive, real-time user-facing applications; non-urgent background tasks should invariably leverage asynchronous cloud batching.
+2. **Full Hardware Amortization (Cost Model M2):** Counting the laptop's purchase price ($1,199 amortised over 3 years at 8 hours a day) and an assumed 20 W power draw, and charging all three local answers per arithmetic question, the certified cost reduction shifts from **41.3% down to 28.4% [26.1%, 30.6%]** at the measured 28.5 tokens/second (Chapter 5). Charging only one local answer per question would give 36.5%.
+3. **Break-Even Generation Velocity:** Against modern low-cost frontier models such as Gemini 3 Flash ($0.50 / $3.00 per million tokens, `configs/models.yaml`), the break-even local generation speed is **12.1 tokens/second**. Because Apple Silicon M2 achieves 23 tokens/second end-to-end and 29 tokens/second during decoding (`notes/m2_checks.md`), localized edge execution remains demonstrably cheaper than cloud invocation even when benchmarked against hyper-optimized commercial APIs.
 
 ---
 
@@ -131,7 +131,7 @@ Our primary cost model (M1) assumes that localized edge inference is economicall
 
 - **Exchangeability Violations:** Learn-then-Test guarantees assume that incoming test traffic is exchangeable with the calibration split. While guaranteed on held-out benchmark splits, this assumption degrades if production traffic undergoes substantial semantic or linguistic drift.
 - **Static Cloud Baseline:** Frontier model performance is grounded in RouterBench’s cataloged GPT-4 completions (November 2023). Contemporary frontier models exhibit different error topographies, requiring recalibration on contemporary reference outputs.
-- **Quantization and Platform Discrepancies:** Training labels were acquired via 16-bit bfloat models hosted on H100 GPU clusters, whereas live edge execution evaluates 4-bit MLX models on Apple Silicon. While our verification audit on 200 sampled questions revealed negligible divergence within standard error bounds ($\pm 2.5\%$, `notes/m2_checks.md`), subtle quantization shifts exist.
+- **Quantization and Platform Discrepancies:** Training labels were acquired via 16-bit bfloat models hosted on H100 GPU clusters, whereas live edge execution evaluates 4-bit MLX models on Apple Silicon. On 100 GSM8K and 100 MMLU test questions the 4-bit model scored within −2 and +3 points of the bf16 labels, inside the ±7-point uncertainty of that sample size (`notes/m2_checks.md`); a larger check would narrow this.
 - **Gold-Letter Censoring:** Excluding the 649 hardest multiple-choice questions (where no historical model answered correctly) renders the headline evaluation slightly more accessible than the raw academic benchmarks.
 - **Academic Benchmark Specialization:** Standardized benchmarks evaluate structured, single-turn prompts with objective ground truth; they do not capture conversational nuance, ambiguous creative writing, or ultra-long-context retrieval.
 

@@ -56,7 +56,8 @@ Evaluated on the frozen test split ($N=4,707$ queries) using seed-free WSR termi
 | **Test Escalation Rate ($\alpha_{\text{test}}$)** | **75.9%** | [74.7%, 77.1%] |
 | **Realized Test PGR** | **102.8%** | [99.1%, 107.0%] |
 | **Model M1 Spend Savings** | **41.3%** | **[39.0%, 43.5%]** |
-| **Model M2 Amortized Savings** | **36.5%** | [34.3%, 38.7%] |
+| **Model M2 Amortized Savings** (all three local answers billed) | **28.4%** | [26.1%, 30.6%] |
+| Model M2, one local answer billed (earlier convention) | 36.5% | [34.3%, 38.7%] |
 
 ### 3.2 Mixtral Development Pair (Two-Head MLP, Rule v2, WSR)
 

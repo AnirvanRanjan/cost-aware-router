@@ -349,7 +349,7 @@ To resolve this issue, the team ratified **Decision D-15** (`DECISIONS.md`): the
 In summary, Lane B established the feature extraction and routing foundations for the project:
 1. **Leak-Free Query Features:** Built $F_0$ heuristic, $F_1$ lexical, and $F_2$ dense embedding pipelines operating strictly on prompt text under grouped sub-split anti-leakage isolation.
 2. **Calibrated Two-Head MLP Router:** Designed a two-head neural network with a shared 256-d GELU trunk, decoupled marginal quality heads, and multi-task capability gap loss, reducing expected calibration error by up to $56.7\%$.
-3. **Information Limits of Text Routing:** Demonstrated empirically that pre-execution text routers hit a hard ceiling ($9.4\%$ certified savings on Mixtral, falling to $0.5\% - 2.5\%$ on Qwen3.5-4B due to compressed headroom).
+3. **Information Limits of Text Routing:** Demonstrated empirically that pre-execution text routers hit a hard ceiling ($9.4\%$ certified savings on Mixtral, falling to $0.5\% - 2.1\%$ (seed-free) on Qwen3.5-4B due to compressed headroom).
 4. **Cascade Confidence Architecture:** Implemented generation consensus and probability signals that overcome text limits, delivering **$41.3\%$ [95% CI: 39.0%, 43.5%] certified API savings** (seed-free WSR martingale) and **$27.8\%$ - $29.5\%$** on the single-sample baseline.
 5. **Production Demo Alignment (Decision D-15):** Rebuilt the serving bundle from the certified 3-sample research router, fixing out-of-distribution text brittleness and aligning the live demonstration directly with our formal guarantees.
 

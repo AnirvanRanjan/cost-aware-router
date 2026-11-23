@@ -1,5 +1,18 @@
 # Chapter 1 — Introduction
 
+> **Author Declaration & Attributions (Chapters 1, 2, 3, 7 and 8):** These chapters were written by
+> Anirvan Ranjan (Lane A: data, corpus, evaluation pipeline and system integration). In line with UPES
+> guidelines on generative AI: AI tools (Claude) were used to draft and revise text, to check every
+> number against the repository's reports, and to help write parts of the code; the author directed the
+> work, reviewed and rewrote the text, and is responsible for its content. Lane A's work comprises the
+> RouterBench audit and re-grading, gold-letter recovery, template-centred de-duplication and frozen
+> splits (Chapter 3), the threshold and cost code (`router/threshold.py`, `router/costs.py`), the
+> Track B generation pipeline, and the D-15 demo router (`router/signals.py`, the `cascade_t61` bundle,
+> the server's cascade path). Results from other lanes are credited in their chapters: features and
+> routers to Lane B (Huwaid Siddiqui), certification and the seed-free bound to Lane C (Sarthak
+> Jakhmola), and the on-device system and demo to Lane D (Kartiken). **[TODO Ani: confirm this
+> wording and the attribution list before submission.]**
+
 ## 1.1 The Problem: Frontier Capability at Frontier Cost
 
 Frontier large language models (LLMs) solve complex reasoning tasks with remarkable accuracy, yet their commercial deployment incurs steep economic costs. Under 2026 enterprise pricing, flagship proprietary models such as Claude 3.5 Sonnet and GPT-4 charge approximately $3.00 per million input tokens and $15.00 per million output tokens. In contrast, modern open-weight edge models—such as Qwen2.5-4B and Qwen3.5-4B—execute locally on standard consumer hardware (e.g., an Apple Silicon laptop with 16 GB unified memory) for the negligible marginal cost of electricity.
@@ -82,16 +95,16 @@ To circumvent proprietary API budget constraints during development, we ground o
 
 The primary contributions of this thesis are:
 
-1. **A Repaired, Leak-Free Routing Corpus:** We identify critical failure modes in RouterBench, demonstrating that raw GSM8K scores do not reflect mathematical correctness and that multiple-choice evaluations contain severe formatting collapse. We implement robust numeric extraction, recover gold targets for 95% to 100% of multiple-choice tasks, and prove that semantic deduplication on templated prompts requires template-centered normalization to prevent spurious clustering.
-2. **Finite-Sample Statistical Guarantees for Model Routing:** We present the first application of Learn-then-Test to LLM routing thresholds. We demonstrate that standard empirical bootstrap bounds undercover on low-headroom tasks (failing 15% of the time against a nominal 5% error budget), whereas terminal Waudby-Smith–Ramdas (WSR) betting martingales provide strict finite-sample validity without sacrificing tightness.
-3. **Information Limits of Query-Only Routing vs. Cascades:** We show that text-only features (heuristics, lexical shingles, dense embeddings) provide insufficient signal to reliably forecast edge model failure, yielding only 0.5% to 2.5% certified savings on the Qwen3.5-4B / GPT-4 pair. Conversely, incorporating internal generation signals (three-sample consensus and top-choice confidence) unlocks **41.3% [39.0%, 43.5%] certified API savings** at $\text{PGR} \ge 0.95$ (test $\text{PGR} = 102.8\%$).
-4. **Edge Deployment and Realistic Cost Benchmarking:** We package the complete pipeline into an on-device runtime on an Apple M2 MacBook. The router makes decisions in 7.6 ms (99th percentile), executing Qwen3.5-4B in 4-bit MLX with zero measurable accuracy loss relative to the 16-bit reference model. We show that when accounting for device power and capital amortization (Model M2), the system preserves a 36.5% cost reduction.
+1. **A Repaired, Leak-Free Routing Corpus:** We identify critical failure modes in RouterBench, demonstrating that raw GSM8K scores do not reflect mathematical correctness and that multiple-choice evaluations contain severe formatting collapse. We implement robust numeric extraction, recover gold targets for 95% to 100% of multiple-choice tasks, and show that semantic deduplication on templated prompts requires template-centered normalization to prevent spurious clustering.
+2. **Finite-Sample Statistical Guarantees for Model Routing:** To our knowledge, we present the first application of Learn-then-Test to LLM routing thresholds. We demonstrate that standard empirical bootstrap bounds undercover on low-headroom tasks (failing 15% of the time against a nominal 5% error budget), whereas terminal Waudby-Smith–Ramdas (WSR) betting martingales provide strict finite-sample validity without sacrificing tightness.
+3. **Information Limits of Query-Only Routing vs. Cascades:** We show that text-only features (heuristics, lexical shingles, dense embeddings) provide insufficient signal to reliably forecast edge model failure, yielding only 0.5% to 2.1% certified savings on the Qwen3.5-4B / GPT-4 pair (seed-free). Conversely, incorporating internal generation signals (three-sample consensus and top-choice confidence) unlocks **41.3% [39.0%, 43.5%] certified API savings** at $\text{PGR} \ge 0.95$ (test $\text{PGR} = 102.8\%$).
+4. **Edge Deployment and Realistic Cost Benchmarking:** We package the complete pipeline into an on-device runtime on an Apple M2 MacBook. The router makes decisions in about 6 ms (99th percentile), executing Qwen3.5-4B in 4-bit MLX with no measurable accuracy loss relative to the 16-bit reference model. We show that when the laptop's purchase price and power are counted for all three local answers (Model M2), the system still cuts cost by 28.4%.
 
 ---
 
 ## 1.5 Results in Brief
 
-On our primary evaluation benchmark comparing local Qwen3.5-4B against cloud GPT-4 (Table 1.1), fixing the routing cutoff on the calibration split via seed-free WSR martingales delivers **41.3% [39.0%, 43.5%] API expenditure reduction** while securing a realized test PGR of **102.8% [99.1%, 107.0%]**—representing a 1.7× cost efficiency improvement. Incorporating device energy and hardware amortization (Cost Model M2) yields a net 36.5% cost reduction. 
+On our primary evaluation benchmark comparing local Qwen3.5-4B against cloud GPT-4 (Table 1.1), fixing the routing cutoff on the calibration split via seed-free WSR martingales delivers **41.3% [39.0%, 43.5%] API expenditure reduction** while securing a realized test PGR of **102.8% [99.1%, 107.0%]**—representing a 1.7× cost efficiency improvement. Counting the laptop's purchase price and power for all three local answers (Cost Model M2), the net cost reduction is 28.4% [26.1%, 30.6%]. 
 
 Importantly, if the decision threshold is selected retrospectively by scanning the empirical test curve, the apparent cost savings reach 78.9% (a 4.7× reduction). The difference between 41.3% and 78.9% illustrates the concrete statistical penalty required to guarantee safety in production.
 
@@ -99,10 +112,12 @@ Importantly, if the decision threshold is selected retrospectively by scanning t
 
 | Routing Configuration | Selection Protocol | Statistical Guarantee | Realized Test PGR | Cost Savings (API M1) | Hardware-Inclusive Savings (M2) |
 |---|---|---|--:|--:|--:|
-| **Question-Only Router (F2)** | Calibrated (LTT + WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 98.6% | 2.5% [1.8%, 3.1%] | 2.3% |
-| **Cascade Router (3-sample)** | Calibrated (Seed-Free WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | **102.8%** | **41.3% [39.0%, 43.5%]** | **36.5%** |
-| **Cascade Router (3-sample)** | Post-hoc Test Curve | None (Optimistic baseline) | 95.0% | 78.9% (4.7×) | 71.2% |
-| **Cascade Router (1-sample, D-14 baseline)**| Calibrated (Single seed) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 97.7% | 27.8% [25.9%, 29.6%] | 26.5% |
+| **Question-Only Router (F2)** | Calibrated (Seed-Free WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 98.6% | 2.1% [1.5%, 2.7%] | 2.0% |
+| **Cascade Router (3-sample)** | Calibrated (Seed-Free WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | **102.8%** | **41.3% [39.0%, 43.5%]** | **28.4%** |
+| **Cascade Router (3-sample)** | Post-hoc Test Curve | None (Optimistic baseline) | 95.0% | 78.9% (4.7×) | 66.1% |
+| **Cascade Router (1-sample, D-14 baseline)**| Calibrated (Seed-Free WSR) | $\mathbb{P}(\text{PGR} \ge 0.95) \ge 0.95$ | 98.4% | 29.5% [27.8%, 31.5%] | 24.7% |
+
+*M2 charges the laptop for every local answer the router generates (three per arithmetic question for the 3-sample cascade). Charging only one answer per question, as in an earlier draft, gives 36.5%. Source: Chapter 5, Table 5.1.*
 
 ---
 
