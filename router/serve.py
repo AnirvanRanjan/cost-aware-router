@@ -22,6 +22,7 @@ Everything loads once, at start-up. Model calls are serialised with a lock (one 
 """
 
 import json
+import math
 import re
 import threading
 import time
@@ -33,10 +34,28 @@ import numpy as np
 from router import graders
 from router.bundle import Decision, RouterBundle
 from router.generate import Generation, GenerationCache, GenParams, build_prompt, cache_key
-from router.signals import mcq_prompt, option_signals, sample_signals, text_agreement_signals
+from router.signals import _final_answer, mcq_prompt, option_signals, sample_signals, text_agreement_signals
 
 STATIC = Path(__file__).resolve().parent / "static"
 DEMO_SET = Path(__file__).resolve().parents[1] / "configs" / "demo_set.yaml"
+
+
+def _softmax(logprobs: dict[str, float]) -> dict[str, float]:
+    """Option letter -> probability (softmax over the options), for the page's option bars."""
+    m = max(logprobs.values())
+    e = {k: math.exp(v - m) for k, v in logprobs.items()}
+    z = sum(e.values())
+    return {k: round(v / z, 4) for k, v in e.items()}
+
+
+def _fmt_num(x: float | None) -> str:
+    if x is None:
+        return "—"
+    return str(int(x)) if float(x).is_integer() else f"{x:g}"
+
+
+def _short(text: str, n: int = 40) -> str:
+    return (text[: n - 1] + "…") if len(text) > n else (text or "—")
 
 
 def load_demo_set(path: Path = DEMO_SET) -> list[dict]:
@@ -135,10 +154,12 @@ class Demo:
         labels = graders.parse_options(query)
         if len(labels) >= 2 and hasattr(self.small, "option_logprobs"):
             scored = query if "Print only a single choice" in query else mcq_prompt(query, labels)
-            sig, letter = option_signals(self.small.option_logprobs(scored, labels))
+            olp = self.small.option_logprobs(scored, labels)
+            sig, letter = option_signals(olp)
             d = self.bundle.decide(scored, signals=sig, source="mmlu")   # scored text: same token count as training
             return d, option_answer(query, letter), {
-                "kind": "multiple choice", "certified": True, "signal": f"option probability {sig['p_chosen']:.2f}"}
+                "kind": "multiple choice", "certified": True, "signal": f"option probability {sig['p_chosen']:.2f}",
+                "evidence": {"type": "options", "probs": _softmax(olp), "chosen": letter}}
         k = int(self.bundle.meta.get("samples", 1))
         sp = self.bundle.meta.get("sampling", {"temperature": 0.7, "top_p": 0.8})
         params = replace(self.params, temperature=sp["temperature"], top_p=sp["top_p"])
@@ -148,12 +169,15 @@ class Demo:
         texts, lps, n_out = [g.text for g in gens], [g.mean_logprob for g in gens], [g.n_out for g in gens]
         if arithmetic:
             sig, _, shown = sample_signals(query, texts, lps, n_out)
+            finals = [_fmt_num(graders.extract_number(t or "", query)) for t in texts]
         else:
             sig, shown = text_agreement_signals(texts, lps, n_out)
+            finals = [_short(_final_answer(t)) for t in texts]
         d = self.bundle.decide(query, signals=sig, source="gsm8k")
         agree = f"{round(sig['agree'] * k)}/{k} answers agree" if k > 1 else f"mean log-prob {sig['lp_mean']:.2f}"
         return d, texts[shown] or "", {"kind": "arithmetic" if arithmetic else "free-form",
-                                       "certified": arithmetic, "signal": agree}
+                                       "certified": arithmetic, "signal": agree,
+                                       "evidence": {"type": "samples", "answers": finals, "shown": shown}}
 
     def _answer_local_first(self, query: str) -> tuple[Decision, str, dict]:
         """Cascade bundles: Qwen's answer, then the routing decision on it (call with self.lock held)."""

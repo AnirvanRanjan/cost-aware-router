@@ -231,3 +231,17 @@ def test_demo_set_endpoint_lists_the_planned_questions(tmp_path):
 
     items = TestClient(create_app(_demo())).get("/demo-set").json()
     assert items and {"id", "expect", "query"} <= set(items[0])      # the repo's configs/demo_set.yaml
+
+
+def test_route_event_carries_the_evidence_the_page_draws():
+    """The page shows what the router saw: option probabilities, or the k final answers."""
+    d = _t61_demo()
+    mcq = d.route("Which planet is known as the Red Planet? A) Venus B) Mars C) Jupiter D) Saturn")["evidence"]
+    assert mcq["type"] == "options" and set(mcq["probs"]) == {"A", "B", "C", "D"}
+    assert abs(sum(mcq["probs"].values()) - 1) < 1e-3 and mcq["probs"][mcq["chosen"]] == max(mcq["probs"].values())
+
+    ar = _t61_demo(small=AgreeingClient("qwen3.5-4b")).route("What is 3 times 4?")["evidence"]
+    assert ar == {"type": "samples", "answers": ["12", "12", "12"], "shown": 0}
+
+    ff = _t61_demo(small=AgreeingClient("qwen3.5-4b")).route("Who wrote Romeo and Juliet?")["evidence"]
+    assert ff["type"] == "samples" and len(ff["answers"]) == 3 and ff["answers"][0] == "12"

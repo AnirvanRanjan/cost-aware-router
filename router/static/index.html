@@ -5,351 +5,317 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cost-Aware Router</title>
 <style>
-  /* Two themes. "dark" (default) is the futuristic stage look; "light" is for washed-out projectors.
-     No web fonts: the demo must work with Wi-Fi off. */
-  :root, :root[data-theme="dark"] {
-    --bg: #05070f; --bg2: #0a1022; --glass: rgba(18, 26, 48, .62); --glass2: rgba(28, 38, 66, .55);
-    --edge: rgba(120, 160, 255, .18); --edge-hi: rgba(140, 180, 255, .45);
-    --fg: #e9eefc; --muted: #8e9bbb; --dim: #5d6a8a;
-    --local: #2ef2a6; --local-rgb: 46, 242, 166; --frontier: #b38cff; --frontier-rgb: 179, 140, 255;
-    --accent: #4cc9ff; --accent-rgb: 76, 201, 255; --warn: #ffb35c; --warn-rgb: 255, 179, 92;
-    --grid: rgba(90, 130, 255, .07); --aurora: 1;
+  /* Written to read like a figure from the thesis, not a product page: paper, ink, one rule weight,
+     numbers in monospace. No web fonts, no images: the demo must work with Wi-Fi off.
+     Light is the default (projectors); "dark" is the same layout in reverse. */
+  :root, :root[data-theme="light"] {
+    --paper: #f5f2ea; --sheet: #fbf9f4; --ink: #1c1b19; --muted: #6b665c; --faint: #9a9488;
+    --rule: #d9d3c5; --rule2: #bdb6a6;
+    --local: #2f6b3f; --frontier: #a2402a; --mark: #1c1b19; --hl: #ede6d3;
   }
-  :root[data-theme="light"] {
-    --bg: #f3f6fb; --bg2: #e8eef8; --glass: rgba(255, 255, 255, .92); --glass2: rgba(240, 244, 251, .95);
-    --edge: #d3dbe8; --edge-hi: #9fb3d6;
-    --fg: #0f1626; --muted: #4f5b73; --dim: #7a869d;
-    --local: #0b8a5c; --local-rgb: 11, 138, 92; --frontier: #6a3fd6; --frontier-rgb: 106, 63, 214;
-    --accent: #1366d6; --accent-rgb: 19, 102, 214; --warn: #b35a00; --warn-rgb: 179, 90, 0;
-    --grid: transparent; --aurora: 0;
+  :root[data-theme="dark"] {
+    --paper: #171614; --sheet: #1d1c19; --ink: #ebe7dd; --muted: #a39d90; --faint: #6f6a60;
+    --rule: #34322d; --rule2: #4a4740;
+    --local: #7fb98a; --frontier: #e08a6f; --mark: #ebe7dd; --hl: #2a2823;
   }
   * { box-sizing: border-box; }
   html, body { overflow-x: hidden; }
-  body { margin: 0; min-height: 100vh; color: var(--fg); background: var(--bg);
-         font: 17px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
-  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 17px/1.55 Charter, "Iowan Old Style", "Bitstream Charter", Georgia, "Times New Roman", serif; }
+  .mono, code, .num { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .86em; }
+  .num { font-variant-numeric: tabular-nums; }
+  .sc { font: 600 11.5px/1.2 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .08em;
+        text-transform: uppercase; color: var(--muted); }
+  a, .link { color: inherit; text-decoration: underline; text-decoration-color: var(--rule2);
+             text-underline-offset: 3px; cursor: pointer; background: none; border: 0; padding: 0; font: inherit; }
+  a:hover, .link:hover { text-decoration-color: var(--ink); }
 
-  /* animated backdrop: drifting aurora + perspective grid */
-  .backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; background:
-      radial-gradient(1200px 600px at 50% -10%, var(--bg2), transparent 70%), var(--bg); }
-  .blob { position: absolute; width: 60vmax; height: 60vmax; border-radius: 50%; filter: blur(80px);
-          opacity: calc(.28 * var(--aurora)); mix-blend-mode: screen; animation: drift 26s ease-in-out infinite alternate; }
-  .blob.a { background: radial-gradient(circle, rgba(var(--accent-rgb), .9), transparent 60%); left: -15vmax; top: -20vmax; }
-  .blob.b { background: radial-gradient(circle, rgba(var(--frontier-rgb), .9), transparent 60%); right: -20vmax; top: 10vmax; animation-duration: 32s; }
-  .blob.c { background: radial-gradient(circle, rgba(var(--local-rgb), .7), transparent 60%); left: 20vmax; bottom: -35vmax; animation-duration: 38s; }
-  @keyframes drift { to { transform: translate(6vmax, 4vmax) scale(1.12); } }
-  .gridlines { position: absolute; inset: -50% -50% 0; transform: perspective(600px) rotateX(62deg);
-               background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-               background-size: 56px 56px; animation: scroll 14s linear infinite; bottom: -30%; top: 45%; }
-  @keyframes scroll { to { background-position: 0 56px, 0 0; } }
+  main { max-width: 1240px; margin: 0 auto; padding: 36px 32px 64px; }
+  @media (max-width: 700px) { main { padding: 20px 16px 48px; } }
 
-  main { max-width: 1360px; margin: 0 auto; padding: 28px 28px 56px; }
-  @media (max-width: 700px) { main { padding: 16px 16px 40px; } }
+  /* masthead */
+  header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 24px; flex-wrap: wrap;
+           border-bottom: 2px solid var(--ink); padding-bottom: 12px; }
+  h1 { font-size: 34px; line-height: 1.1; margin: 0; font-weight: 700; letter-spacing: -.005em; }
+  .dek { color: var(--muted); margin: 6px 0 0; font-size: 16px; max-width: 62ch; }
+  .status { text-align: right; font-size: 13px; color: var(--muted); line-height: 1.7; }
+  .status b { color: var(--ink); font-weight: 600; }
+  .dotst { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--local);
+           margin-right: 6px; vertical-align: 1px; }
+  .dotst.off { background: var(--frontier); }
+  @media (max-width: 700px) { .status { text-align: left; } h1 { font-size: 28px; } }
 
-  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .logo { width: 46px; height: 46px; flex: none; }
-  .logo .ring { fill: none; stroke: var(--edge-hi); stroke-width: 1.5; }
-  .logo .n1 { fill: var(--local); } .logo .n2 { fill: var(--frontier); } .logo .hub { fill: var(--accent); }
-  .logo .path { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 5; animation: dash 1.6s linear infinite; fill: none; }
-  @keyframes dash { to { stroke-dashoffset: -18; } }
-  h1 { font-size: 30px; margin: 0; letter-spacing: -.01em; font-weight: 800;
-       background: linear-gradient(90deg, var(--fg), var(--accent) 60%, var(--frontier)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  :root[data-theme="light"] h1 { background: none; color: var(--fg); }
-  .tagline { color: var(--muted); font-size: 15px; margin-top: 2px; }
-  .pills { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .pill { font-size: 13px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--edge); background: var(--glass);
-          color: var(--muted); white-space: nowrap; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-  .pill.ok { color: var(--fg); }
-  .pill.off { border-color: rgba(var(--warn-rgb), .6); color: var(--warn); }
-  .pill .led { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--local);
-               box-shadow: 0 0 8px var(--local); vertical-align: 1px; animation: blink 2.4s ease-in-out infinite; }
-  .pill.off .led { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
-  @keyframes blink { 50% { opacity: .35; } }
-  .theme { cursor: pointer; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 40px; margin-top: 28px; }
+  @media (max-width: 980px) { .cols { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
 
-  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 370px; gap: 22px; margin-top: 22px; }
-  @media (max-width: 980px) { .grid { grid-template-columns: minmax(0, 1fr); } }
-  .card { position: relative; background: var(--glass); border: 1px solid var(--edge); border-radius: 18px; padding: 22px;
-          backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%);
-          box-shadow: 0 10px 40px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.04); animation: rise .6s ease both; }
-  :root[data-theme="light"] .card { box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 6px 20px rgba(16,24,40,.06); }
-  aside .card:nth-child(2) { animation-delay: .12s; }
-  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
-  .label { font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  section + section { margin-top: 30px; }
+  h2 { margin: 0 0 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+       border-bottom: 1px solid var(--rule); padding-bottom: 6px; }
+  h2 .sc { color: var(--ink); }
+  h2 .aside { font-size: 13px; color: var(--muted); font-weight: 400; }
 
-  form { display: flex; gap: 12px; }
-  textarea { flex: 1; min-width: 0; min-height: 80px; resize: vertical; padding: 14px 16px; border-radius: 12px; font: inherit;
-             border: 1px solid var(--edge); background: var(--glass2); color: var(--fg); transition: border-color .2s, box-shadow .2s; }
-  textarea:focus { outline: none; border-color: rgba(var(--accent-rgb), .8); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .18), 0 0 24px rgba(var(--accent-rgb), .18); }
-  button.ask { position: relative; padding: 0 30px; border: 0; border-radius: 12px; color: #fff; font: inherit; font-weight: 800;
-               letter-spacing: .02em; cursor: pointer; overflow: hidden;
-               background: linear-gradient(135deg, rgba(var(--accent-rgb), 1), rgba(var(--frontier-rgb), 1));
-               box-shadow: 0 0 24px rgba(var(--accent-rgb), .35); transition: transform .15s, box-shadow .2s; }
-  button.ask:hover { transform: translateY(-1px); box-shadow: 0 0 34px rgba(var(--accent-rgb), .55); }
-  button.ask::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%);
-                      transform: translateX(-120%); }
-  button.ask:hover::after { animation: shine .9s ease; }
-  @keyframes shine { to { transform: translateX(120%); } }
-  button.ask:disabled { opacity: .55; cursor: default; transform: none; }
-  .hint { color: var(--dim); font-size: 13px; margin-top: 6px; }
+  /* question */
+  form { display: grid; grid-template-columns: minmax(0, 1fr) auto; border: 1px solid var(--rule2); background: var(--sheet); }
+  textarea { min-width: 0; min-height: 84px; resize: vertical; border: 0; padding: 14px 16px; background: transparent;
+             color: var(--ink); font: inherit; font-size: 18px; outline: none; }
+  form:focus-within { border-color: var(--ink); }
+  button.ask { border: 0; border-left: 1px solid var(--rule2); background: var(--ink); color: var(--paper);
+               font: 600 15px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .06em; padding: 0 26px; cursor: pointer; }
+  button.ask:disabled { opacity: .45; cursor: default; }
 
-  details.picker { margin-top: 12px; }
-  details.picker summary { cursor: pointer; color: var(--accent); font-size: 15px; list-style: none; }
-  details.picker summary::before { content: "▸ "; display: inline-block; transition: transform .2s; }
-  details.picker[open] summary::before { transform: rotate(90deg); }
-  .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 12px; }
-  .group h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; }
-  .q { display: block; width: 100%; text-align: left; border: 1px solid var(--edge); background: var(--glass2); color: var(--fg);
-       border-radius: 10px; padding: 7px 11px; margin-bottom: 7px; font: 14px/1.35 inherit; cursor: pointer;
-       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: border-color .15s, transform .15s, box-shadow .15s; }
-  .q:hover { border-color: rgba(var(--accent-rgb), .7); transform: translateX(3px); box-shadow: 0 0 16px rgba(var(--accent-rgb), .15); }
-  .q code { font-size: 12px; color: var(--accent); margin-right: 8px; }
+  details.picker { margin-top: 14px; border-bottom: 1px solid var(--rule); }
+  details.picker summary { cursor: pointer; list-style: none; padding: 8px 0; font-size: 15px; color: var(--muted); }
+  details.picker summary::-webkit-details-marker { display: none; }
+  details.picker summary::before { content: "+"; display: inline-block; width: 16px; font-family: ui-monospace, Menlo, monospace; }
+  details.picker[open] summary::before { content: "−"; }
+  .groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px 28px; padding-bottom: 12px; }
+  .group h3 { margin: 10px 0 4px; }
+  .group button { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; width: 100%; text-align: left;
+                  background: none; border: 0; border-top: 1px dotted var(--rule); padding: 5px 0; cursor: pointer;
+                  color: var(--ink); font: inherit; font-size: 14px; line-height: 1.35; }
+  .group button:hover { background: var(--hl); }
+  .group button code { color: var(--faint); font-size: 12px; padding-top: 2px; }
+  .group button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* the cascade pipeline: three nodes joined by a track; a pulse runs along it */
-  .pipe { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 22px; }
-  @media (max-width: 700px) { .pipe { grid-template-columns: 1fr; } .track2 { display: none; } }
-  .track2 { position: absolute; left: 8%; right: 8%; top: 31px; height: 2px; background: var(--edge); border-radius: 2px; overflow: hidden; }
-  .track2 .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; transition: width .5s ease;
-                  background: linear-gradient(90deg, var(--accent), var(--frontier)); box-shadow: 0 0 12px var(--accent); }
-  .track2 .pulse { position: absolute; top: -3px; width: 60px; height: 8px; border-radius: 4px; opacity: 0;
-                   background: radial-gradient(closest-side, rgba(var(--accent-rgb), .95), transparent); }
-  .pipe.running .track2 .pulse { opacity: 1; animation: run 1.1s linear infinite; }
-  @keyframes run { from { left: -60px; } to { left: 100%; } }
-  .node { position: relative; z-index: 1; border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px 12px 60px;
-          background: linear-gradient(var(--glass2), var(--glass2)), var(--bg); min-height: 84px; transition: border-color .3s, box-shadow .3s, transform .3s; }
-  .node > * { transition: opacity .3s; }
-  .node:not(.on) > * { opacity: .45; }
-  .node.busy { border-color: rgba(var(--accent-rgb), .8); box-shadow: 0 0 24px rgba(var(--accent-rgb), .25); transform: translateY(-2px); }
-  .node.local { border-color: rgba(var(--local-rgb), .8); box-shadow: 0 0 24px rgba(var(--local-rgb), .22); }
-  .node.frontier { border-color: rgba(var(--frontier-rgb), .8); box-shadow: 0 0 24px rgba(var(--frontier-rgb), .22); }
-  .icon { position: absolute; left: 14px; top: 14px; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-          background: rgba(var(--accent-rgb), .12); color: var(--accent); }
-  .icon svg { width: 20px; height: 20px; }
-  .node .n { font-size: 11px; font-weight: 800; color: var(--dim); letter-spacing: .14em; text-transform: uppercase; }
-  .node .t { font-weight: 700; margin-top: 1px; }
-  .node .d { color: var(--muted); font-size: 14px; margin-top: 2px; min-height: 21px; }
-  .orbit { display: inline-flex; gap: 5px; vertical-align: middle; margin-right: 8px; }
-  .orbit i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: hop 1s ease-in-out infinite; }
-  .orbit i:nth-child(2) { animation-delay: .15s; } .orbit i:nth-child(3) { animation-delay: .3s; }
-  @keyframes hop { 50% { transform: translateY(-5px); opacity: .4; } }
+  /* trace */
+  ol.trace { list-style: none; margin: 0; padding: 0; font-size: 15px; }
+  ol.trace li { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 12px; padding: 5px 0;
+                border-bottom: 1px dotted var(--rule); animation: in .25s ease-out both; }
+  ol.trace li .t { color: var(--faint); text-align: right; }
+  ol.trace li.wait .what::after { content: "▍"; margin-left: 2px; animation: blink 1s steps(1) infinite; color: var(--muted); }
+  ol.trace .empty { display: block; color: var(--faint); font-style: italic; border: 0; }
+  @keyframes in { from { opacity: 0; transform: translateY(2px); } }
+  @keyframes blink { 50% { opacity: 0; } }
 
-  .verdict { margin-top: 16px; border-radius: 16px; padding: 16px 20px; display: none; position: relative; overflow: hidden; }
-  .verdict.local, .verdict.frontier { display: block; animation: pop .45s cubic-bezier(.2, .9, .3, 1.25) both; }
-  .verdict.local { background: rgba(var(--local-rgb), .10); border: 1px solid rgba(var(--local-rgb), .7); box-shadow: 0 0 40px rgba(var(--local-rgb), .15); }
-  .verdict.frontier { background: rgba(var(--frontier-rgb), .10); border: 1px solid rgba(var(--frontier-rgb), .7); box-shadow: 0 0 40px rgba(var(--frontier-rgb), .15); }
-  .verdict::before { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.10) 50%, transparent 65%);
-                     transform: translateX(-100%); animation: sweep 1.1s .1s ease both; pointer-events: none; }
-  @keyframes pop { from { opacity: 0; transform: scale(.96) translateY(6px); } }
-  @keyframes sweep { to { transform: translateX(100%); } }
-  .verdict .big { font-size: 26px; font-weight: 900; letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; }
-  .verdict.local .big { color: var(--local); text-shadow: 0 0 18px rgba(var(--local-rgb), .35); }
-  .verdict.frontier .big { color: var(--frontier); text-shadow: 0 0 18px rgba(var(--frontier-rgb), .35); }
-  .verdict .big svg { width: 26px; height: 26px; flex: none; }
-  .verdict .why { margin-top: 4px; }
-  .tag { display: inline-block; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 6px; margin-left: 8px;
-         vertical-align: 2px; letter-spacing: .08em; text-transform: uppercase; }
-  .tag.cert { color: var(--local); border: 1px solid rgba(var(--local-rgb), .7); }
-  .tag.uncert { color: var(--warn); border: 1px solid rgba(var(--warn-rgb), .8); background: rgba(var(--warn-rgb), .1); }
-  .tag.forced { color: var(--muted); border: 1px solid var(--edge); }
+  /* the decision */
+  .verdict { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 20px; align-items: baseline; padding: 16px 0 4px; }
+  .verdict .where { font-size: 26px; font-weight: 700; line-height: 1.2; }
+  .verdict .where.local { color: var(--local); } .verdict .where.frontier { color: var(--frontier); }
+  .verdict .cost { text-align: right; color: var(--muted); }
+  .verdict .why { grid-column: 1 / -1; color: var(--muted); font-size: 15px; }
+  @media (max-width: 700px) { .verdict { grid-template-columns: minmax(0, 1fr); } .verdict .cost { text-align: left; } }
+  .flag { font: 600 11px/1 ui-monospace, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase;
+          border: 1px solid currentColor; padding: 3px 5px 2px; margin-left: 8px; vertical-align: 2px; white-space: nowrap; }
+  .flag.cert { color: var(--local); } .flag.uncert { color: var(--frontier); } .flag.forced { color: var(--muted); }
 
-  .meter { margin-top: 14px; }
-  .bar { position: relative; height: 10px; border-radius: 5px;
-         background: linear-gradient(90deg, rgba(var(--local-rgb), .9) 0 50%, rgba(var(--frontier-rgb), .9) 50% 100%); }
-  .bar .thr { position: absolute; left: 50%; top: -9px; bottom: -9px; width: 2px; background: var(--fg); box-shadow: 0 0 10px var(--fg); }
-  .bar .dot { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
-              background: var(--bg); border: 3px solid var(--fg); box-shadow: 0 0 16px rgba(255,255,255,.35);
-              transition: left .9s cubic-bezier(.2, .9, .3, 1.1); }
-  .scale { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 8px; gap: 8px; }
+  .fig { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; margin-top: 14px; }
+  @media (max-width: 700px) { .fig { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
+  .figcap { font-size: 13px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
 
-  .answer-card { margin-top: 18px; border: 1px solid var(--edge); border-radius: 14px; background: var(--glass2); overflow: hidden; }
-  .answer-head { display: flex; justify-content: space-between; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--edge);
-                 font-size: 14px; color: var(--muted); }
-  .answer { white-space: pre-wrap; padding: 16px; min-height: 130px; font-size: 19px; line-height: 1.6; }
-  .answer.streaming::after { content: "▍"; color: var(--accent); animation: caret 1s steps(2) infinite; margin-left: 2px; }
-  @keyframes caret { 50% { opacity: 0; } }
-  .meta { display: flex; gap: 22px; flex-wrap: wrap; color: var(--muted); font-size: 14px; margin-top: 12px; }
-  .meta b { color: var(--fg); font-weight: 700; }
-  .err { color: var(--warn); }
+  /* evidence: what Qwen said, k times, or its option probabilities */
+  .samples { display: flex; gap: 8px; flex-wrap: wrap; }
+  .samples .s { min-width: 64px; border: 1px solid var(--rule2); padding: 8px 10px 6px; background: var(--sheet);
+                animation: in .25s ease-out both; }
+  .samples .s small { display: block; font: 11px/1 ui-monospace, Menlo, monospace; color: var(--faint); margin-bottom: 5px; }
+  .samples .s b { font: 600 18px/1.2 ui-monospace, "SF Mono", Menlo, monospace; display: block;
+                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+  .samples .s.maj { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--ink); }
+  .opts { display: grid; grid-template-columns: 22px minmax(0, 1fr) 46px; gap: 6px 10px; align-items: center; }
+  .opts .l { font: 600 14px ui-monospace, Menlo, monospace; }
+  .opts .bar { height: 12px; border: 1px solid var(--rule2); background: var(--sheet); }
+  .opts .bar i { display: block; height: 100%; width: 0; background: var(--faint); transition: width .5s ease-out; }
+  .opts .bar.top i { background: var(--ink); }
+  .opts .v { text-align: right; }
 
-  /* sidebar */
-  .saved { font-size: 46px; font-weight: 900; color: var(--local); line-height: 1.05; margin-top: 8px; letter-spacing: -.02em;
-           text-shadow: 0 0 24px rgba(var(--local-rgb), .35); }
-  .saved.bump { animation: bump .5s ease; }
-  @keyframes bump { 40% { transform: scale(1.06); } }
-  .share { color: var(--muted); }
-  .split { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 16px 0 8px; background: var(--glass2); border: 1px solid var(--edge); }
-  .split i { display: block; height: 100%; transition: width .6s cubic-bezier(.2, .9, .3, 1); }
-  .legend { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
-  .legend b { color: var(--fg); }
-  .stat { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--edge); font-size: 15px; }
-  .stat:last-child { border-bottom: 0; }
-  .note { color: var(--dim); font-size: 13px; margin: 12px 0 0; }
-  .cert-card { margin-top: 18px; }
-  .cert-card::after { content: ""; position: absolute; inset: -1px; border-radius: 18px; padding: 1px; pointer-events: none;
-                      background: conic-gradient(from var(--a, 0deg), transparent 0 70%, rgba(var(--local-rgb), .9) 80%, transparent 90%);
-                      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
-                      animation: orbit 6s linear infinite; }
-  @property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
-  @keyframes orbit { to { --a: 360deg; } }
-  .cert-card .num { font-size: 34px; font-weight: 900; margin-top: 4px; }
-  .cert-card .row { margin-top: 4px; font-size: 15px; }
+  /* ruler: the router's score against tau* */
+  .ruler { position: relative; height: 58px; margin: 18px 10px 0; }
+  .ruler .axis { position: absolute; left: 0; right: 0; top: 26px; border-top: 1px solid var(--ink); }
+  .ruler .zone { position: absolute; top: 20px; height: 12px; left: 0;
+                 background: repeating-linear-gradient(90deg, transparent 0 5px, var(--rule) 5px 6px); }
+  .ruler .tick { position: absolute; top: 20px; height: 12px; border-left: 1px solid var(--ink); }
+  .ruler .tick.tau { top: 12px; height: 28px; border-left-width: 2px; }
+  .ruler .lab { position: absolute; top: 42px; transform: translateX(-50%); font: 11px ui-monospace, Menlo, monospace; color: var(--muted); white-space: nowrap; }
+  .ruler .lab.tau { color: var(--ink); font-weight: 600; top: -4px; }
+  .ruler .side { position: absolute; top: 42px; font-size: 12px; color: var(--muted); }
+  .ruler .marker { position: absolute; top: 15px; width: 0; height: 0; transform: translateX(-6px);
+                   border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid var(--mark);
+                   transition: left .6s cubic-bezier(.2,.7,.2,1); }
+  .ruler .marker.frontier { border-top-color: var(--frontier); } .ruler .marker.local { border-top-color: var(--local); }
 
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation: none !important; transition: none !important; }
-  }
+  /* the answer */
+  .answer { white-space: pre-wrap; font-size: 18px; line-height: 1.6; min-height: 3em; padding: 2px 0 2px 18px;
+            border-left: 3px solid var(--rule2); margin-top: 6px; overflow-wrap: anywhere; }
+  .answer.local { border-left-color: var(--local); } .answer.frontier { border-left-color: var(--frontier); }
+  .answer.streaming::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--muted); }
+  .answer:empty::before { content: "—"; color: var(--faint); }
+  .meta { display: flex; gap: 6px 22px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .err { color: var(--frontier); font-family: ui-monospace, Menlo, monospace; font-size: 14px; }
+
+  /* ledger */
+  .saved { font-size: 46px; line-height: 1; font-weight: 700; letter-spacing: -.01em; margin: 10px 0 6px; font-variant-numeric: lining-nums tabular-nums; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font: 600 11px/1.2 ui-monospace, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase;
+       color: var(--muted); border-bottom: 1px solid var(--ink); padding: 6px 4px; }
+  td { padding: 6px 4px; border-bottom: 1px dotted var(--rule); vertical-align: top; white-space: nowrap; }
+  td.r, th.r { text-align: right; } td.q { max-width: 0; width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  tr.new td { animation: hl 1.6s ease-out; }
+  @keyframes hl { from { background: var(--hl); } }
+  tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; }
+  .rt { font: 600 12px ui-monospace, Menlo, monospace; }
+  .rt.local { color: var(--local); } .rt.frontier { color: var(--frontier); }
+  .ledger-scroll { max-height: 320px; overflow-y: auto; }
+  .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; font-size: 14px; margin-top: 12px; }
+  .kv span { color: var(--muted); }
+
+  .result { border: 1px solid var(--ink); padding: 14px 16px 12px; background: var(--sheet); }
+  .result .big { font-size: 30px; font-weight: 700; line-height: 1.1; margin: 4px 0 8px; }
+  .result p { margin: 10px 0 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
+  .result dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 12px; margin: 8px 0 0; font-size: 14px; }
+  .result dt { font-family: ui-monospace, Menlo, monospace; font-size: 13px; padding-top: 1px; }
+  .result dd { margin: 0; color: var(--muted); }
+
+  footer { margin-top: 44px; padding-top: 10px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--faint);
+           display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<div class="backdrop" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div><div class="gridlines"></div></div>
 <main>
   <header>
-    <div class="brand">
-      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
-        <circle class="ring" cx="24" cy="24" r="22"/>
-        <path class="path" d="M10 32 C 18 32, 18 16, 24 16 S 32 32, 38 32"/>
-        <circle class="hub" cx="24" cy="16" r="4"/><circle class="n1" cx="10" cy="32" r="4"/><circle class="n2" cx="38" cy="32" r="4"/>
-      </svg>
-      <div>
-        <h1>Cost-Aware Router</h1>
-        <div class="tagline" id="tagline">Answer on this Mac when the small model is sure; pay for the frontier model only when it is not.</div>
-      </div>
+    <div>
+      <h1>A cost-aware model router</h1>
+      <p class="dek" id="dek">A small model answers on this laptop. A frontier model is called only when the small one is not sure enough.</p>
     </div>
-    <div class="pills" id="pills"><span class="pill">connecting…</span></div>
+    <div class="status" id="status">connecting…</div>
   </header>
 
-  <div class="grid">
-    <section class="card">
-      <form id="f">
-        <textarea id="q" placeholder="Ask a question, or pick one of the demo questions below."></textarea>
-        <button class="ask" id="go">Ask</button>
-      </form>
-      <div class="hint">⌘/Ctrl + Enter to ask</div>
-      <details class="picker" id="picker" hidden>
-        <summary>Demo questions</summary>
-        <div class="groups" id="groups"></div>
-      </details>
+  <div class="cols">
+    <div>
+      <section>
+        <h2><span class="sc">1 · Question</span><span class="aside">⌘↵ to ask</span></h2>
+        <form id="f">
+          <textarea id="q" placeholder="Type a question, or pick one of the planned demo questions below."></textarea>
+          <button class="ask" id="go">ASK</button>
+        </form>
+        <details class="picker" id="picker" hidden>
+          <summary>Planned demo questions</summary>
+          <div class="groups" id="groups"></div>
+        </details>
+      </section>
 
-      <div class="pipe" id="pipe">
-        <div class="track2"><div class="fill" id="fill"></div><div class="pulse"></div></div>
-        <div class="node" id="s1">
-          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
-          <div class="n">Step 1 · on this Mac</div><div class="t">Local model answers</div><div class="d" id="s1d">free, private</div>
-        </div>
-        <div class="node" id="s2">
-          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg></div>
-          <div class="n">Step 2</div><div class="t">Confidence check</div><div class="d" id="s2d">how sure is it?</div>
-        </div>
-        <div class="node" id="s3">
-          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v6a6 6 0 0 0 6 6h6"/><path d="M15 12l3 3-3 3"/><path d="M6 21v-3"/></svg></div>
-          <div class="n">Step 3</div><div class="t">Decision</div><div class="d" id="s3d">keep it, or escalate</div>
-        </div>
-      </div>
+      <section>
+        <h2><span class="sc">2 · What happened</span><span class="aside" id="elapsed"></span></h2>
+        <ol class="trace" id="trace"><li class="empty">Nothing asked yet.</li></ol>
 
-      <div class="verdict" id="verdict">
-        <div class="big" id="vbig"></div>
-        <div class="why" id="vwhy"></div>
-        <div class="meter" id="meter" hidden>
-          <div class="bar"><span class="thr"></span><span class="dot" id="dot"></span></div>
-          <div class="scale"><span>← sure enough: keep on the Mac</span><span>certified threshold τ*</span><span>not sure: escalate →</span></div>
+        <div id="decision" hidden>
+          <div class="verdict">
+            <div class="where" id="where"></div>
+            <div class="cost num" id="qcost"></div>
+            <div class="why" id="why"></div>
+          </div>
+          <div class="fig">
+            <div>
+              <div class="sc" id="evTitle">What the router saw</div>
+              <div id="ev" style="margin-top:10px"></div>
+              <div class="figcap" id="evCap"></div>
+            </div>
+            <div id="rulerBox" hidden>
+              <div class="sc">Router score vs. threshold</div>
+              <div class="ruler" id="ruler"></div>
+              <div class="figcap" id="rulerCap"></div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div class="answer-card">
-        <div class="answer-head"><span id="ahead">Answer</span><span id="acost" class="mono"></span></div>
+      <section>
+        <h2><span class="sc">3 · Answer</span><span class="aside" id="ahead"></span></h2>
         <div class="answer" id="answer"></div>
-      </div>
-      <div class="meta" id="meta"></div>
-    </section>
+        <div class="meta" id="meta"></div>
+      </section>
+    </div>
 
     <aside>
-      <div class="card">
-        <div class="label">Saved vs always-frontier</div>
-        <div class="saved mono" id="saved">$0.0000</div>
-        <div class="share" id="savedShare">no questions yet</div>
-        <div class="split"><i id="splitL" style="background:var(--local);width:0;box-shadow:0 0 12px var(--local)"></i><i id="splitF" style="background:var(--frontier);width:0;box-shadow:0 0 12px var(--frontier)"></i></div>
-        <div class="legend"><span>kept on Mac <b id="nl">0</b></span><span>sent to frontier <b id="nf">0</b></span></div>
-        <div style="margin-top:14px">
-          <div class="stat"><span>Questions</span><b id="n" class="mono">0</b></div>
-          <div class="stat"><span>Spent</span><b id="spent" class="mono">$0</b></div>
-          <div class="stat"><span>Always-frontier would cost</span><b id="allf" class="mono">$0</b></div>
-          <div class="stat"><span>Router decision p50 / p99</span><b id="lat" class="mono">–</b></div>
+      <section>
+        <h2><span class="sc">Savings</span><span class="aside" id="nq">0 questions</span></h2>
+        <div class="saved" id="saved">$0</div>
+        <div style="font-size:14px;color:var(--muted)" id="savedShare">saved against sending every question to the frontier</div>
+        <div class="ledger-scroll" style="margin-top:14px">
+          <table>
+            <thead><tr><th>#</th><th>Question</th><th>Route</th><th class="r">Paid</th><th class="r">Frontier</th></tr></thead>
+            <tbody id="rows"></tbody>
+            <tfoot><tr><td></td><td>This page</td><td></td><td class="r num" id="spent">$0</td><td class="r num" id="allf">$0</td></tr></tfoot>
+          </table>
         </div>
-        <p class="note">Live demo traffic, priced at frontier list rates. Not a certified figure.</p>
-      </div>
-      <div class="card cert-card" id="certCard" hidden>
-        <div class="label">Certified result · thesis</div>
-        <div class="num" id="certNum"></div>
-        <div class="row" id="certRow"></div>
-        <p class="note" id="certNote"></p>
-      </div>
+        <div class="kv">
+          <span>Kept on this Mac / sent out</span><b class="num" id="split">0 / 0</b>
+          <span>Router decision time, p50 / p99</span><b class="num" id="lat">–</b>
+        </div>
+        <p class="figcap">Frontier answers are priced at list rates even on a free tier; local answers cost $0 (cost model M1).
+          “Frontier” is what the same question would have cost if it had been sent there.</p>
+      </section>
+
+      <section id="certCard" hidden>
+        <h2><span class="sc">The measured result</span><span class="aside">Ch. 5, Table 5.1</span></h2>
+        <div class="result">
+          <div class="big" id="certNum"></div>
+          <dl id="certDl"></dl>
+          <p id="certNote"></p>
+        </div>
+      </section>
     </aside>
   </div>
+
+  <footer>
+    <span>Cost-Aware Router · UPES B.Tech CSE major project</span>
+    <span><button class="link" id="themeBtn" type="button">dark</button> · <a href="/health" target="_blank">/health</a></span>
+  </footer>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const usd = (x) => "$" + (x < 0.01 ? x.toFixed(5) : x.toFixed(4));
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const usd = (x) => x === 0 ? "$0" : "$" + (x < 0.01 ? x.toFixed(5) : x.toFixed(4));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const secs = (ms) => (ms / 1000).toFixed(2) + " s";
 const dur = (ms) => ms == null ? "–" : ms < 1000 ? `${ms.toFixed(0)} ms` : `${(ms / 1000).toFixed(1)} s`;
 const render = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");          // light markdown: bold only
 const HEADLINE_TAU = 8.2187;                                                     // notes/t27_t28_locked_numbers.md
-const reduced = (() => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } })();
-const ICON_MAC = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>`;
-const ICON_CLOUD = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z"/></svg>`;
 
-// count a number up smoothly (falls back to a jump with reduced motion)
-const shown = {};
-function tween(id, to, fmt) {
-  const from = shown[id] ?? 0; shown[id] = to;
-  if (reduced || from === to) { $(id).textContent = fmt(to); return; }
-  const t0 = performance.now(), T = 700;
-  const tick = (now) => { const k = Math.min(1, (now - t0) / T), e = 1 - Math.pow(1 - k, 3);
-                          $(id).textContent = fmt(from + (to - from) * e); if (k < 1) requestAnimationFrame(tick); };
-  requestAnimationFrame(tick);
+// light (projectors) by default; "dark" remembered per browser
+function setTheme(t) {
+  document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (e) {}
+  $("themeBtn").textContent = t === "dark" ? "light" : "dark";
 }
-
-// theme: dark (stage) by default, light for projectors; remembered per browser
-function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (e) {} }
-let theme = "dark";
-try { theme = localStorage.getItem("theme") || "dark"; } catch (e) {}
+let theme = "light";
+try { theme = localStorage.getItem("theme") === "dark" ? "dark" : "light"; } catch (e) {}
 setTheme(theme);
+$("themeBtn").onclick = () => { theme = theme === "dark" ? "light" : "dark"; setTheme(theme); };
 
 let health = null;
+const small = () => (health ? health.small : "the local model");
 fetch("/health").then(r => r.json()).then(h => {
   health = h;
   const m = h.bundle || {};
-  $("tagline").textContent = `${h.small} answers on this Mac · ${h.large} is the frontier model`;
-  $("pills").innerHTML =
-    (h.offline ? `<span class="pill off"><span class="led"></span>OFFLINE · cached frontier answers</span>`
-               : `<span class="pill ok"><span class="led"></span>frontier live</span>`) +
-    `<span class="pill ok mono">τ* = ${h.tau.toFixed(3)}</span>` +
-    (m.featurizer ? `<span class="pill mono">${m.featurizer}</span>` : "") +
-    (m.interim ? `<span class="pill off">interim router</span>` : "") +
-    `<span class="pill theme" id="themeBtn">${theme === "dark" ? "☀︎ projector mode" : "☾ stage mode"}</span>`;
-  $("themeBtn").onclick = () => { theme = theme === "dark" ? "light" : "dark"; setTheme(theme);
-                                  $("themeBtn").textContent = theme === "dark" ? "☀︎ projector mode" : "☾ stage mode"; };
+  $("dek").textContent = `${h.small} answers on this laptop. ${h.large} is called only when ${h.small} is not sure enough of its own answer.`;
+  $("status").innerHTML =
+    `<span class="dotst${h.offline ? " off" : ""}"></span>${h.offline ? "offline · frontier answers from cache" : "frontier live"}<br>` +
+    `τ* = <b class="num">${h.tau.toFixed(4)}</b>` + (m.featurizer ? ` · <span class="num">${esc(m.featurizer)}</span>` : "") +
+    (m.interim ? ` · interim router` : "");
   const t = m.test;
   if (t && Math.abs(h.tau - HEADLINE_TAU) < 1e-3) {           // only claim the thesis number for the thesis router
     $("certCard").hidden = false;
-    $("certNum").textContent = "41.3% saved";
-    $("certRow").innerHTML = `<b>${(100 * t.pgr).toFixed(1)}%</b> of GPT-4's quality advantage kept`;
-    $("certNote").textContent = `API spend on 4,707 held-out test questions, threshold fixed in advance (seed-free WSR, PGR ≥ 0.95 with 95% confidence). ${(100 * t.alpha).toFixed(1)}% of questions went to the frontier.`;
+    $("certNum").textContent = "41.3% less API spend";
+    $("certDl").innerHTML =
+      `<dt>${(100 * t.pgr).toFixed(1)}%</dt><dd>of GPT-4's quality advantage kept</dd>` +
+      `<dt>${(100 * t.alpha).toFixed(1)}%</dt><dd>of questions sent to the frontier</dd>` +
+      `<dt>4,707</dt><dd>held-out test questions, unseen when τ* was chosen</dd>`;
+    $("certNote").textContent = "τ* was fixed on the calibration split with a seed-free WSR bound (PGR ≥ 0.95 at 95% confidence) before the test split was opened. This live session illustrates that router; it is not the measurement.";
   }
-}).catch(() => { $("pills").innerHTML = `<span class="pill off"><span class="led"></span>server not reachable</span>`; });
+}).catch(() => { $("status").innerHTML = `<span class="dotst off"></span>server not reachable`; });
 
 fetch("/demo-set").then(r => r.json()).then(items => {
   if (!items.length) return;
-  const groups = { easy: "Easy · should stay on the Mac", hard: "Hard · should escalate",
-                   free: "Free-form · not certified", chat: "Open chat" };
+  const groups = { easy: "Easy — should stay on the Mac", hard: "Hard — should escalate",
+                   free: "Free-form — not certified", chat: "Open chat" };
   for (const [key, title] of Object.entries(groups)) {
     const mine = items.filter(it => it.id.startsWith(key));
     if (!mine.length) continue;
     const g = document.createElement("div"); g.className = "group";
-    g.innerHTML = `<h3>${title}</h3>`;
+    g.innerHTML = `<h3 class="sc">${title}</h3>`;
     for (const it of mine) {
-      const b = document.createElement("button"); b.type = "button"; b.className = "q"; b.title = it.query;
-      b.innerHTML = `<code>${it.id}</code>${esc(it.query)}`;
+      const b = document.createElement("button"); b.type = "button"; b.title = it.query;
+      b.innerHTML = `<code>${esc(it.id)}</code><span>${esc(it.query)}</span>`;
       b.onclick = () => { $("q").value = it.query; $("picker").open = false; ask(); };
       g.appendChild(b);
     }
@@ -358,23 +324,86 @@ fetch("/demo-set").then(r => r.json()).then(items => {
   $("picker").hidden = false;
 }).catch(() => {});
 
-let lastSaved = 0;
 function showTotals(t) {
-  tween("saved", t.saved_usd, usd);
-  if (t.saved_usd > lastSaved && !reduced) { $("saved").classList.remove("bump"); void $("saved").offsetWidth; $("saved").classList.add("bump"); }
-  lastSaved = t.saved_usd;
-  $("savedShare").textContent = t.all_frontier_usd > 0 ? `${(100 * t.saved_share).toFixed(1)}% cheaper than always using the frontier` : "no questions yet";
-  tween("n", t.queries, (x) => Math.round(x)); $("nl").textContent = t.local; $("nf").textContent = t.frontier;
-  const n = Math.max(1, t.local + t.frontier);
-  $("splitL").style.width = (100 * t.local / n) + "%"; $("splitF").style.width = (100 * t.frontier / n) + "%";
-  tween("spent", t.spent_usd, usd); tween("allf", t.all_frontier_usd, usd);
+  $("saved").textContent = usd(t.saved_usd);
+  $("savedShare").textContent = t.all_frontier_usd > 0
+    ? `saved since the server started: ${(100 * t.saved_share).toFixed(1)}% less than sending every question to the frontier`
+    : "saved since the server started, against sending every question to the frontier";
+  $("nq").textContent = `${t.queries} question${t.queries === 1 ? "" : "s"}`;
+  $("split").textContent = `${t.local} / ${t.frontier}`;
   $("lat").textContent = t.queries ? `${t.router_ms_p50.toFixed(1)} / ${t.router_ms_p99.toFixed(1)} ms` : "–";
 }
 fetch("/stats").then(r => r.json()).then(showTotals).catch(() => {});
 
-function node(i, cls, text) {
-  $("s" + i).className = "node" + (cls ? " " + cls : "");
-  if (text !== undefined) $("s" + i + "d").innerHTML = text;
+// trace: one line per step, timed from the moment the question is sent
+let t0 = 0;
+function step(text, wait) {
+  const ol = $("trace");
+  const prev = ol.querySelector("li.wait"); if (prev) prev.classList.remove("wait");
+  const li = document.createElement("li"); if (wait) li.className = "wait";
+  li.innerHTML = `<span class="t num">${secs(performance.now() - t0)}</span><span class="what">${text}</span>`;
+  ol.appendChild(li);
+}
+
+function evidence(d) {
+  const ev = d.evidence;
+  $("ev").innerHTML = ""; $("evCap").textContent = "";
+  if (!ev) {
+    $("evTitle").textContent = "What the router saw";
+    $("ev").innerHTML = `<span style="color:var(--muted)">${d.forced ? "Nothing: the route was forced." : "The question text only."}</span>`;
+    return;
+  }
+  if (ev.type === "options") {
+    $("evTitle").textContent = `${small()}: probability of each option`;
+    $("ev").innerHTML = `<div class="opts">` + Object.entries(ev.probs).map(([k, p]) =>
+      `<span class="l">${esc(k)}</span><div class="bar${k === ev.chosen ? " top" : ""}"><i data-w="${(100 * p).toFixed(1)}"></i></div>` +
+      `<span class="v num">${p.toFixed(2)}</span>`).join("") + `</div>`;
+    requestAnimationFrame(() => requestAnimationFrame(() =>
+      $("ev").querySelectorAll("i[data-w]").forEach(i => { i.style.width = i.dataset.w + "%"; })));
+    $("evCap").textContent = "One forward pass over the option letters, in the MMLU format the router was trained on.";
+  } else {
+    const a = ev.answers, counts = {};
+    a.forEach(x => { if (x !== "—") counts[x] = (counts[x] || 0) + 1; });
+    const top = Object.entries(counts).sort((p, q) => q[1] - p[1])[0];
+    const maj = top && top[1] > 1 ? top[0] : null;
+    $("evTitle").textContent = `${small()}: ${a.length} sampled answers`;
+    $("ev").innerHTML = `<div class="samples">` + a.map((x, i) =>
+      `<div class="s${x === maj ? " maj" : ""}" style="animation-delay:${i * 90}ms"><small>sample ${i + 1}</small>` +
+      `<b title="${esc(x)}">${esc(x)}</b></div>`).join("") + `</div>`;
+    $("evCap").textContent = d.kind === "arithmetic"
+      ? `Final numbers of ${a.length} answers sampled at temperature 0.7. ${maj ? `${top[1]} of ${a.length} agree.` : "No two agree."}`
+      : "Final answers compared as text. The router was not trained on this kind of question, so the guarantee does not cover this decision.";
+  }
+}
+
+function ruler(d) {
+  if (d.score == null || !d.tau) { $("rulerBox").hidden = true; return; }
+  $("rulerBox").hidden = false;
+  // log scale centred on tau*: tau*/8 ... 8 tau*; scores <= 0 sit at the left edge
+  const tau = d.tau;
+  const x = (v) => v <= 0 ? 0 : Math.max(0, Math.min(100, 50 + 50 * Math.log2(v / tau) / 3));
+  const fmt = (v) => v >= 10 ? v.toFixed(0) : v.toFixed(1);
+  const ticks = [tau / 8, tau / 4, tau / 2, 2 * tau, 4 * tau, 8 * tau].map(v =>
+    `<div class="tick" style="left:${x(v)}%"></div><div class="lab" style="left:${x(v)}%">${fmt(v)}</div>`).join("");
+  $("ruler").innerHTML =
+    `<div class="zone" style="width:50%"></div><div class="axis"></div>${ticks}` +
+    `<div class="tick tau" style="left:50%"></div><div class="lab tau" style="left:50%">τ* ${tau.toFixed(2)}</div>` +
+    `<div class="marker ${d.route}" id="marker" style="left:${d.route === "local" ? 0 : 100}%"></div>`;
+  requestAnimationFrame(() => requestAnimationFrame(() => { $("marker").style.left = x(d.score) + "%"; }));
+  const off = d.score > 8 * tau ? " (off the scale)" : d.score < tau / 8 ? " (off the scale)" : "";
+  $("rulerCap").innerHTML = `Score <b class="num">${d.score.toFixed(2)}</b>${off}: predicted quality lost by staying local, ` +
+    `per unit of frontier cost (log scale). Hatched side: kept on the Mac.`;
+}
+
+let nRow = 0, sumPaid = 0, sumWould = 0;
+function ledgerRow(q, route, paid, would) {
+  nRow += 1; sumPaid += paid; sumWould += would;
+  $("spent").textContent = usd(sumPaid); $("allf").textContent = usd(sumWould);
+  const tr = document.createElement("tr"); tr.className = "new";
+  tr.innerHTML = `<td class="num">${nRow}</td><td class="q" title="${esc(q)}">${esc(q)}</td>` +
+    `<td><span class="rt ${route}">${route}</span></td>` +
+    `<td class="r num">${paid > 0 ? usd(paid) : "$0"}</td><td class="r num">${usd(would)}</td>`;
+  $("rows").prepend(tr);
 }
 
 function ask(ev) {
@@ -382,60 +411,54 @@ function ask(ev) {
   const q = $("q").value.trim();
   if (!q) return;
   $("go").disabled = true;
-  let raw = "";
-  $("answer").innerHTML = ""; $("answer").className = "answer"; $("meta").innerHTML = ""; $("acost").textContent = "";
-  $("ahead").textContent = "Answer"; $("verdict").className = "verdict"; $("meter").hidden = true; $("dot").style.left = "50%";
-  node(1, "", "free, private"); node(2, "", "how sure is it?"); node(3, "", "keep it, or escalate");
-  $("fill").style.width = "0"; $("pipe").className = "pipe running";
-  const t0 = performance.now();
+  let raw = "", route = null;
+  t0 = performance.now();
+  $("trace").innerHTML = ""; $("decision").hidden = true; $("elapsed").textContent = "";
+  $("answer").innerHTML = ""; $("answer").className = "answer"; $("meta").innerHTML = ""; $("ahead").textContent = "";
+  step("question sent", true);
   const es = new EventSource("/chat/stream?q=" + encodeURIComponent(q));
 
-  es.addEventListener("status", () => {      // cascade: the local model is answering before the router decides
-    node(1, "on busy", `<span class="orbit"><i></i><i></i><i></i></span>${health ? esc(health.small) : "local model"} is answering…`);
-    $("fill").style.width = "18%";
+  es.addEventListener("status", (e) => {     // cascade: the local model is answering before the router decides
+    step(esc(JSON.parse(e.data).message.replace(/…$/, "")), true);
   });
   es.addEventListener("route", (e) => {
     const d = JSON.parse(e.data);
+    route = d.route;
     const local = d.route === "local";
-    const cascade = !!d.kind;
-    $("pipe").className = "pipe";
-    node(1, "on", cascade ? (d.kind === "multiple choice" ? "scored the options in one pass" : "answered 3 times") : "skipped: decided from the question");
-    $("fill").style.width = "50%";
-    setTimeout(() => {
-      node(2, "on", d.signal ? `<b>${esc(d.signal)}</b>` : (d.forced ? "skipped (forced)" : "predicted from the question"));
-      $("fill").style.width = "100%";
-    }, reduced ? 0 : 220);
-    setTimeout(() => {
-      node(3, "on " + d.route, local ? `<b style="color:var(--local)">keep on the Mac</b>` : `<b style="color:var(--frontier)">send to ${esc(d.model)}</b>`);
-      $("verdict").className = "verdict " + d.route;
-      $("vbig").innerHTML = (local ? ICON_MAC + "Answered on this Mac · $0" : ICON_CLOUD + `Sent to ${esc(d.model)}`);
-      const cert = d.certified === false ? `<span class="tag uncert">not a certified question type</span>`
-                 : (cascade ? `<span class="tag cert">certified question type</span>` : "");
-      const why = d.signal ? `${esc(d.kind)}: ${esc(d.signal)}` : "";
-      $("vwhy").innerHTML = why + cert + (d.forced ? `<span class="tag forced">forced</span>` : "") +
-        ` <span style="color:var(--muted);font-size:14px">· decided in ${d.router_ms.toFixed(1)} ms</span>`;
-      if (d.score != null && d.tau) {         // risk score relative to τ* (τ* at the centre)
-        $("meter").hidden = false;
-        const x = Math.max(2, Math.min(98, 50 * d.score / d.tau));
-        requestAnimationFrame(() => requestAnimationFrame(() => { $("dot").style.left = x + "%"; }));
-      }
-    }, reduced ? 0 : 440);
-    $("ahead").textContent = local ? `${d.model} · on this Mac` : `${d.model} · frontier`;
-    $("answer").classList.add("streaming");
+    if (d.kind === "multiple choice") step(`scored the options: <b>${esc(d.signal)}</b>`);
+    else if (d.kind) step(`answered ${d.evidence ? d.evidence.answers.length : 3} times: <b>${esc(d.signal)}</b>`);
+    else if (d.forced) step("local model skipped (route forced)");
+    const cmp = d.score != null ? `score <span class="num">${d.score.toFixed(2)}</span> ${d.score > d.tau ? "&gt;" : "≤"} τ* → ` : "";
+    step(`router: ${cmp}<b style="color:var(--${d.route})">${local ? "keep on this Mac" : "send to " + esc(d.model)}</b>` +
+         ` <span style="color:var(--faint)">(${d.router_ms.toFixed(1)} ms)</span>`, !local);
+
+    $("decision").hidden = false;
+    $("where").className = "where " + d.route;
+    $("where").textContent = local ? "Answered on this Mac" : `Sent to ${d.model}`;
+    $("why").innerHTML = (d.kind ? esc(d.kind) : "decided from the question") +
+      (d.certified === false ? `<span class="flag uncert">not certified</span>` : d.kind ? `<span class="flag cert">certified type</span>` : "") +
+      (d.forced ? `<span class="flag forced">forced</span>` : "");
+    $("qcost").textContent = "";
+    evidence(d); ruler(d);
+    $("answer").classList.add(d.route, "streaming");
+    $("ahead").textContent = local ? `${d.model}, on this Mac` : `${d.model}, frontier`;
   });
   es.addEventListener("token", (e) => { raw += JSON.parse(e.data); $("answer").innerHTML = render(raw); });
   es.addEventListener("error", (e) => {
-    $("pipe").className = "pipe"; $("answer").classList.remove("streaming");
-    if (e.data) $("answer").innerHTML += `<div class="err">${esc(JSON.parse(e.data))}</div>`;
-    else if (!raw) $("answer").innerHTML = `<div class="err">connection lost</div>`;
+    $("answer").classList.remove("streaming");
+    const w = $("trace").querySelector("li.wait"); if (w) w.classList.remove("wait");
+    const msg = e.data ? JSON.parse(e.data) : (raw ? null : "connection lost");
+    if (msg) { $("answer").innerHTML += `<div class="err">${esc(msg)}</div>`; step(`<span class="err">${esc(msg)}</span>`); }
     es.close(); $("go").disabled = false;
   });
   es.addEventListener("done", (e) => {
     const d = JSON.parse(e.data);
     $("answer").classList.remove("streaming");
-    $("acost").textContent = d.cost_usd > 0 ? `cost ${usd(d.cost_usd)}` : `cost $0 · would have been ${usd(d.counterfactual_usd || 0)}`;
-    $("meta").innerHTML = `<span>first words after <b>${dur(d.first_token_ms)}</b></span>` +
-      `<span>total <b>${dur(performance.now() - t0)}</b></span>` + (d.cached ? `<span>from cache</span>` : "");
+    step(`answer complete${d.cached ? " (from cache)" : ""}`);
+    $("elapsed").textContent = `total ${dur(performance.now() - t0)}`;
+    $("qcost").textContent = d.cost_usd > 0 ? `paid ${usd(d.cost_usd)}` : `paid $0 · frontier: ${usd(d.counterfactual_usd || 0)}`;
+    $("meta").innerHTML = `<span>first words after ${dur(d.first_token_ms)}</span><span>total ${dur(performance.now() - t0)}</span>`;
+    ledgerRow(q, route || "local", d.cost_usd, d.counterfactual_usd || d.cost_usd);
     showTotals(d.totals);
     es.close(); $("go").disabled = false;
   });
