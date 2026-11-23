@@ -14,8 +14,8 @@ pandoc thesis/0*.md --citeproc --bibliography thesis/references.bib -o thesis.te
 | `02_related_work.md` | 2 Related work | A (T54) | Draft; citations checked 2026-10-27, three [check] notes |
 | `03_data.md` | 3 Data | A (T50) | Draft, all numbers from the frozen release |
 | `04_router.md` | 4 Features and router | B (T51) | Draft, all numbers from frozen release and threshold report |
-| `05_results.md` | 5 Cost model, thresholds, results | C (T52) | Draft in `notes/chapter_C_draft.md`; move here |
-| `06_system.md` | 6 Local inference and demo | D (T53) | Draft with the 2026-11-21 T47 soak (frontier throttled by the free tier; 429s excluded from spend), offline 24/24, Author Declaration & Attributions block in ch. 5 format; 63.3% labelled observed-not-certified; needs Kartiken's own wording |
+| `05_results.md` | 5 Cost model, thresholds, results | C (T52) | Draft with locked numbers (tau* 8.219, 41.3% certified); own wording |
+| `06_system.md` | 6 Local inference and demo | D (T53) | Draft with T47 numbers from `notes/demo_perf.md` (soak frontier stats include 429s; offline answers 24/24). Bundle/figures reproducible with scikit-learn==1.8.0; needs Kartiken's own wording |
 | `07_discussion.md`, `08_conclusion.md` | 7–8 | A (T54) | Draft (preview numbers); own wording |
 
 Rules: every number cites the script or note it comes from; nothing is reported from the test split

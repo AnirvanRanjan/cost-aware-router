@@ -1,4 +1,4 @@
-# Headroom Sweep (T27) and Preview Benchmark Numbers (T37 / T28)
+# Headroom Sweep (T27) and Locked Benchmark Numbers (T37 / T28)
 
 *Deliverables for Lane C (Evaluation, Calibration & Statistics)*  
 *Artifacts: `artifacts/routerbench/`, `artifacts/trackb/`, `router/threshold.py`, `router/costs.py`*
@@ -27,9 +27,10 @@ For each pair, we report both the theoretical Oracle reference and the realized 
 
 ---
 
-## 2. Task T37: Calibrated Threshold $\tau^*$ and Pareto Curve (PREVIEW)
+## 2. Task T37: Calibrated Threshold $\tau^*$ and Pareto Curve
 
-*PREVIEW ONLY: Evaluated on HSID's `cascade_predictions.parquet` (`cascade_3sample`, T61 / D-12 / D-14).*
+*Evaluated on release `trackb-6265adf7ffa4a602` (`artifacts/trackb/cascade_predictions.parquet`, `cascade_3sample`, T61 / D-12 / D-14 / D-15).*
+*Environment note: The release predictions were fitted with scikit-learn 1.8.0. Reproducing this exact model requires `scikit-learn==1.8.0` (pinned in `requirements.txt`).*
 
 Applying Rule v2 on `cascade_3sample`:
 - **Calibrated Operating Threshold**: $\tau^* = 8.2187$ (seed-free WSR terminal averaging, $M=50$).
@@ -41,15 +42,15 @@ Applying Rule v2 on `cascade_3sample`:
 
 ---
 
-## 3. Task T28: Preview Headline Numbers (PREVIEW)
+## 3. Task T28: Locked Headline Numbers
 
-*PREVIEW ONLY: Evaluated on HSID's `cascade_predictions.parquet` (`cascade_3sample`).*
+*Locked benchmark numbers evaluated on release `trackb-6265adf7ffa4a602` (`artifacts/trackb/cascade_predictions.parquet`, `cascade_3sample`).*
 
 Evaluated on the frozen test split ($N=4,707$ queries) using seed-free WSR terminal averaging ($M=50$):
 
-### 3.1 Qwen Cascade Router (`cascade_3sample`, Rule v2, Seed-Free WSR) — PREVIEW
+### 3.1 Qwen Cascade Router (`cascade_3sample`, Rule v2, Seed-Free WSR) — LOCKED
 
-| Metric | Preview Value | 95% Confidence Interval |
+| Metric | Locked Value | 95% Confidence Interval |
 |---|--:|:---:|
 | **Calibrated Threshold $\tau^*$** | **8.2187** | — |
 | **Test Escalation Rate ($\alpha_{\text{test}}$)** | **75.9%** | [74.7%, 77.1%] |
