@@ -32,11 +32,11 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 
 | Who | Do this now | Why it can't wait |
 |---|---|---|
-| **All** | Vote on **D-15** (demo uses the T61 3-answer router; `notes/d15_demo_router.md`). Everyone: read ch. 1, 7, 8 for anything wrong about your lane. | D-15 decides what the M2 runs |
-| **A** · Ani | Push; run T45 run 3 on the Mac with the D-15 bundle (`python scripts/11_build_bundle.py --mode cascade_t61 --samples 3`, then `python scripts/check_demo_set.py --out-md notes/demo_set_check_run3.md`). Rewrite ch. 1–3, 7–8 in your own words. | The demo set must pass before the video |
-| **B** · HSID | Review D-15: the demo now rebuilds your T61 `cascade_3sample` router (`--mode cascade_t61`, `router/signals.py`, tested against `16_trackb_preview.py`); your `--mode cascade` bundle stays as the D-14 comparison. Rewrite ch. 4 in your own words. | The demo router is yours |
-| **C** · Sarthak | Seed-free bound is now `select_tau(method="wsr_avg")` in `router/threshold.py` (ported from your script 17, identical p-values): check it. **T28**: lock numbers from the release file and record the scikit-learn version (a refit certifies 48.3%, the release file 41.3%: `notes/d15_demo_router.md`). Move `chapter_C_draft.md` to `thesis/05_results.md`. | The headline number is his |
-| **D** · Kartiken | Soak ✅, offline ✅, Safari ✅, sklearn 1.8.0 pinned on the M2 (tau* 8.219) ✅, demo set 24/24 on the M2 ✅. **Next (Kartiken, in person):** turn on billing for the Gemini key (free tier still 20/day → 5/min — blocks the clean T47 soak); check the attribution list in the declaration and fix his surname; rewrite ch. 6, the slides and the viva notes in his own words (T53 facts are updated); **T48** backup video; **T49** two timed dry runs. | The video is the critical path |
+| **All** | Final numbers locked 2026-11-23 (41.3% M1 / 28.4% M2 / 29.5% one-answer / 2.1% question-only). Each lane: cut your slides to 3–4, finish viva notes, send dry-run dates. | Presentation is the critical path |
+| **A** · Ani | Confirm the ch. 1 AI declaration; get the UPES template, page limit and deadline from the guide; assemble the combined deck; merge chapters into the template (T54). | The template blocks the final thesis |
+| **B** · HSID | Ch. 4 merged. Declaration: say AI helped *draft and refine* (as ch. 5); own-words pass; slides to 3–4. | — |
+| **C** · Sarthak | Ch. 5 merged with the locked numbers (M2 28.4%). Draft your 3–4 slides and viva notes; check the cost-model attribution with Ani (costs.py is lane A's code). | — |
+| **D** · Kartiken | Backup video ✅ (offline). Own-words pass on ch. 6; re-record only if the new demo page (`a/frontend`) is merged; T47 stays free-tier throttled unless billing is enabled. | — |
 
 ---
 
@@ -71,7 +71,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T25 | C | `plot_pareto.py` panels A–D | ✅ |
 | T26 | C | Leave-one-subject-out on MMLU, like-for-like (PR #17) | ✅ merged |
 | T27 | C | Headroom sweep: savings vs gap across Mixtral, Yi-34B and Qwen (`notes/t27_t28_locked_numbers.md`) | ✅ |
-| T28 | C | **Lock the numbers**: Qwen pair headline, Mixtral pair comparison, CIs, test once | 🔶 preview 41.3% [39.0, 43.5]; lock once predictions are in the release |
+| T28 | C | **Lock the numbers**: Qwen pair headline, Mixtral pair comparison, CIs, test once | ✅ locked 2026-11-23 from the release file: 41.3% [39.0, 43.5] M1, 28.4% [26.1, 30.6] M2 (all local answers billed), τ\* 8.2187 (`notes/t27_t28_locked_numbers.md`, ch. 5 Table 5.1) |
 
 ## Track B · The Qwen pair (headline result)
 
@@ -84,7 +84,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T34 | D | Qwen on MMLU / ARC / Winogrande — **done on the H100** (16,130 questions) | ✅ |
 | T35 | A | Track B scores aligned with GPT-4; release `trackb-6265adf7ffa4a602` | ✅ |
 | T36 | B | Router for the Qwen pair: retrain the small-model head on Qwen's labels; calibrate on cal (`notes/qwen_query_report.md`) | ✅ |
-| T37 | C | τ\* for the Qwen pair (Learn-then-Test) and its Pareto curve, for the final router | 🔶 preview τ\* = 8.22 on `cascade_3sample` |
+| T37 | C | τ\* for the Qwen pair (Learn-then-Test) and its Pareto curve, for the final router | ✅ τ\* = 8.2187 (seed-free WSR) |
 | **T59** | D | **4-bit vs bf16** on 200 test questions: no measurable gap (GSM8K −2, MMLU +3 points, ±7) — `notes/m2_checks.md` | ✅ |
 | **T60** | C | **Tighter certification**: seed-free WSR (mean terminal e-value over 50 orderings) — `notes/t60_certification_report.md` | ✅ |
 | **T61** | B | **Cascade router (D-12, D-14)**: official version of `scripts/16_trackb_preview.py`. Two variants: k = 3 (agreement + log-prob, research table) and 1 answer + confidence (demo). Regularise or reduce F2 before combining (it hurt in the preview). `notes/trackb_cascade_report.md` | ✅ (predictions uploaded to release `trackb-6265adf7ffa4a602`) |
@@ -101,21 +101,21 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T45 | A | Demo set checked against the final bundle (`scripts/check_demo_set.py`) | ✅ 24/24 on the M2 (sklearn 1.8.0, tau* 8.219, `notes/demo_set_check_m2.md`); 9 easy, 8 hard (escalated because Qwen is unsure), 4 free-form, 3 chat |
 | T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | ✅ after the 2026-11-19 soak (48 frontier + 234 local rows): all 24 demo-set questions answer with `--offline`; replay queries throttled by the 20/day cap were not cached |
 | T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | 🔶 2026-11-21 re-run with the fixed script: 1010 queries, 553 answered, cache/live split, phys_footprint 0.15→11.00 GB, savings **63.3%** (answered only) — but the frontier arm was still free-tier capped (**457× HTTP 429**; `quotaId` FreeTier, 20/day on 11-21, 5/min on 11-22) so **billing is still off**; clean re-run pending (`notes/demo_perf.md`) |
-| T48 | All | Backup video of the full demo | ⬜ |
+| T48 | All | Backup video of the full demo | ✅ recorded offline on the M2 (2026-11-23); keep a copy in the shared drive and on a USB stick |
 | T49 | All | Two timed dry runs, one on a projector | ⬜ |
 
 ## Report and defence
 
 | ID | Owner | Task | Status |
 |---|---|---|---|
-| T50 | A | Chapter 3, Data (`thesis/03_data.md`) | 🔶 draft; review + own wording |
-| T51 | B | Chapter 4, Features, router, ablation, cascade | ✅ draft in `thesis/04_router.md` |
-| T52 | C | Chapter 5, Cost model, thresholds, guarantees, results (`notes/chapter_C_draft.md`) | 🔶 draft needs fixes |
+| T50 | A | Chapter 3, Data (`thesis/03_data.md`) | ✅ own wording (2026-11-19) |
+| T51 | B | Chapter 4, Features, router, ablation, cascade | ✅ merged; declaration wording to fix |
+| T52 | C | Chapter 5, Cost model, thresholds, guarantees, results (`thesis/05_results.md`) | ✅ merged with locked numbers |
 | T53 | D | Chapter 6, Local inference, the GPU run, serving, demo performance | 🔶 draft in `thesis/06_system.md`; facts updated 2026-11-21 (demo set 24/24, T44 replay, sklearn pin, soak marked PENDING T47 re-run, chapter commands re-run); needs Kartiken's own wording |
-| T54 | A | Ch. 1, 2, 7, 8 drafts ✅ (ch. 1 has the Qwen preview numbers); own wording; merge all chapters | 🔶 |
+| T54 | A | Ch. 1, 2, 3, 7, 8 in own words ✅, final numbers ✅; merge all chapters into the UPES template | 🔶 waits for the template |
 | T55 | D | Reproducibility: one command per figure, tested on a fresh clone. scikit-learn pinned to 1.8.0 in `requirements.txt`: the release router and tau* 8.2187 came from 1.8.0; a 1.9.1 refit certifies 48.3% vs 41.3% (`notes/d15_demo_router.md`) | ✅ fresh-clone repro verified 2026-11-21 (Python 3.13.2, sklearn 1.8.0): bundle tau* 8.21873510404553, T41 100%, `17_t60_seed_free_wsr` 41.3% [39.0, 43.5], demo set 24/24 — README "Reproduce the headline and the demo" |
 | T56 | All | Slides | 🔶 lane D draft ready: `notes/lane_d_presentation_slides.md` (12 slides, every number sourced) — Kartiken to cut and speak |
-| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | 🔶 lane D draft ready: `notes/lane_d_viva_prep.md` (all five T57 questions + serving/memory/number-confusion set) |
+| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | 🔶 lane D draft ready: `notes/lane_d_viva_prep.md` (all five T57 questions + serving/memory/number-confusion set); lane A: `notes/lane_a_viva_prep.md` |
 | T58 | A | Repo public (D-09), MIT licence (D-10) | ✅ |
 
 ---
