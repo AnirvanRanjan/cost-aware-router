@@ -36,6 +36,17 @@ from router.generate import Generation, GenerationCache, GenParams, build_prompt
 from router.signals import mcq_prompt, option_signals, sample_signals, text_agreement_signals
 
 STATIC = Path(__file__).resolve().parent / "static"
+DEMO_SET = Path(__file__).resolve().parents[1] / "configs" / "demo_set.yaml"
+
+
+def load_demo_set(path: Path = DEMO_SET) -> list[dict]:
+    """[{id, expect, query}] from the demo set, or [] if the file is missing."""
+    if not path.exists():
+        return []
+    import yaml
+
+    items = (yaml.safe_load(path.read_text()) or {}).get("queries", [])
+    return [{"id": q["id"], "expect": q.get("expect", "any"), "query": q["query"]} for q in items]
 
 
 def option_answer(query: str, letter: str) -> str:
@@ -304,5 +315,10 @@ def create_app(demo: Demo):
     @app.get("/stats")
     def stats():
         return demo.totals.as_dict()
+
+    @app.get("/demo-set")
+    def demo_set():
+        """The planned demo questions (configs/demo_set.yaml), for the page's question picker."""
+        return load_demo_set()
 
     return app

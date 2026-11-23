@@ -6,88 +6,178 @@
 <title>Cost-Aware Router</title>
 <style>
   :root {
-    --bg: #ffffff; --panel: #f6f8fa; --fg: #1f2328; --muted: #656d76; --line: #d0d7de;
-    --local: #1a7f37; --frontier: #8250df; --accent: #0969da; --warn: #bc4c00;
+    --bg: #f5f7fa; --panel: #ffffff; --panel2: #eef1f5; --fg: #14181f; --muted: #5b6573; --line: #d6dce4;
+    --local: #12805c; --local-soft: #dff3ea; --frontier: #6d3fd1; --frontier-soft: #ece4fb;
+    --accent: #1f6feb; --warn: #b54708; --warn-soft: #fdf0e1; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 16px rgba(16,24,40,.05);
   }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #0d1117; --panel: #161b22; --fg: #e6edf3; --muted: #8b949e; --line: #30363d;
-            --local: #3fb950; --frontier: #a371f7; --accent: #58a6ff; --warn: #f0883e; }
+  :root[data-theme="dark"] {
+    --bg: #0b0f14; --panel: #131922; --panel2: #1a212c; --fg: #e8edf3; --muted: #95a0ae; --line: #2a3340;
+    --local: #3ccf91; --local-soft: #12362a; --frontier: #a98bff; --frontier-soft: #2b2247;
+    --accent: #5b9dff; --warn: #f5a35b; --warn-soft: #3a2612; --shadow: none;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
-  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  h1 { font-size: 22px; margin: 0; }
-  .sub { color: var(--muted); font-size: 13px; }
-  .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-top: 16px; }
-  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
-  form { display: flex; gap: 8px; }
-  textarea { flex: 1; min-height: 64px; resize: vertical; padding: 10px; border-radius: 8px; font: inherit;
+         font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
+  html, body { overflow-x: hidden; }
+  main { max-width: 1320px; margin: 0 auto; padding: 24px 24px 48px; }
+  @media (max-width: 700px) { main { padding: 16px 16px 40px; } }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 28px; margin: 0; letter-spacing: -.01em; }
+  .tagline { color: var(--muted); font-size: 15px; margin-top: 2px; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pill { font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+          background: var(--panel); color: var(--muted); white-space: nowrap; }
+  .pill.off { border-color: var(--warn); color: var(--warn); background: var(--warn-soft); font-weight: 600; }
+  .pill.ok { color: var(--fg); }
+  .theme { cursor: pointer; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; margin-top: 20px; }
+  @media (max-width: 980px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
+  .label { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+  form { display: flex; gap: 10px; }
+  textarea { flex: 1; min-width: 0; min-height: 76px; resize: vertical; padding: 12px 14px; border-radius: 10px; font: inherit;
              border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
-  button { padding: 0 18px; border: 0; border-radius: 8px; background: var(--accent); color: #fff;
-           font: inherit; font-weight: 600; cursor: pointer; }
-  button:disabled { opacity: .5; cursor: default; }
-  .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 13px;
-           letter-spacing: .04em; color: #fff; }
-  .badge.local { background: var(--local); } .badge.frontier { background: var(--frontier); }
-  .decision { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0 10px; min-height: 28px; }
-  .bars { display: grid; grid-template-columns: 70px 1fr 48px; gap: 6px 10px; align-items: center; font-size: 13px; }
-  .bars[hidden] { display: none; }
-  .bar { position: relative; height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; }
-  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
-  .bar.delta > b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--fg); }
-  .answer { white-space: pre-wrap; margin-top: 14px; min-height: 120px; padding: 12px; border-radius: 8px;
-            background: var(--bg); border: 1px solid var(--line); }
-  .meta { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-top: 10px; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+  button.ask { padding: 0 26px; border: 0; border-radius: 10px; background: var(--accent); color: #fff;
+               font: inherit; font-weight: 700; cursor: pointer; }
+  button.ask:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+  details.picker { margin-top: 12px; }
+  details.picker summary { cursor: pointer; color: var(--accent); font-size: 15px; }
+  .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 10px; }
+  .group h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .q { display: block; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+       border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; font: 14px/1.35 inherit; cursor: pointer;
+       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .q:hover { border-color: var(--accent); }
+  .q code { font-size: 12px; color: var(--muted); margin-right: 6px; }
+
+  /* the three steps of a cascade decision */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
+  @media (max-width: 700px) { .steps { grid-template-columns: 1fr; } }
+  .step { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--bg); opacity: .45;
+          transition: opacity .2s, border-color .2s; min-height: 86px; }
+  .step.on { opacity: 1; }
+  .step.busy { border-color: var(--accent); }
+  .step .n { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  .step .t { font-weight: 600; margin-top: 2px; }
+  .step .d { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent);
+          border-radius: 50%; animation: s .8s linear infinite; vertical-align: -1px; margin-right: 6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+
+  .verdict { margin-top: 14px; border-radius: 12px; padding: 14px 18px; display: none; }
+  .verdict.local { display: block; background: var(--local-soft); border: 1px solid var(--local); }
+  .verdict.frontier { display: block; background: var(--frontier-soft); border: 1px solid var(--frontier); }
+  .verdict .big { font-size: 24px; font-weight: 800; }
+  .verdict.local .big { color: var(--local); } .verdict.frontier .big { color: var(--frontier); }
+  .verdict .why { margin-top: 2px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px; margin-left: 6px;
+         vertical-align: 2px; letter-spacing: .03em; }
+  .tag.cert { background: var(--panel); color: var(--local); border: 1px solid var(--local); }
+  .tag.uncert { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
+  .tag.forced { background: var(--panel); color: var(--muted); border: 1px solid var(--line); }
+
+  .meter { margin-top: 12px; }
+  .track { position: relative; height: 12px; border-radius: 6px;
+           background: linear-gradient(90deg, var(--local) 0 50%, var(--frontier) 50% 100%); opacity: .9; }
+  .track .thr { position: absolute; left: 50%; top: -6px; bottom: -6px; width: 2px; background: var(--fg); }
+  .track .dot { position: absolute; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+                background: var(--panel); border: 3px solid var(--fg); transition: left .4s; }
+  .scale { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  .answer-card { margin-top: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+  .answer-head { display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+                 font-size: 14px; color: var(--muted); }
+  .answer { white-space: pre-wrap; padding: 14px; min-height: 120px; font-size: 18px; line-height: 1.55; }
+  .meta { display: flex; gap: 20px; flex-wrap: wrap; color: var(--muted); font-size: 14px; margin-top: 10px; }
   .meta b { color: var(--fg); font-weight: 600; }
-  .stat { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line); }
-  .stat:last-child { border-bottom: 0; }
-  .big { font-size: 28px; font-weight: 700; color: var(--local); }
   .err { color: var(--warn); }
-  .examples button { background: transparent; color: var(--accent); border: 1px solid var(--line);
-                     padding: 4px 10px; margin: 4px 4px 0 0; font-weight: 400; font-size: 13px; }
+
+  /* sidebar */
+  .saved { font-size: 40px; font-weight: 800; color: var(--local); line-height: 1.1; margin-top: 6px; }
+  .share { color: var(--muted); }
+  .split { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: 14px 0 6px; background: var(--panel2); }
+  .split i { display: block; height: 100%; transition: width .3s; }
+  .legend { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+  .legend b { color: var(--fg); }
+  .stat { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .stat:last-child { border-bottom: 0; }
+  .note { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+  .cert-card { margin-top: 16px; }
+  .cert-card .num { font-size: 30px; font-weight: 800; }
+  .cert-card .row { display: flex; gap: 18px; margin-top: 6px; font-size: 15px; }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>Cost-Aware Router</h1>
-    <span class="sub" id="health">connecting…</span>
+    <div>
+      <h1>Cost-Aware Router</h1>
+      <div class="tagline" id="tagline">Answer on this Mac when the small model is sure; pay for the frontier model only when it is not.</div>
+    </div>
+    <div class="pills" id="pills"><span class="pill">connecting…</span></div>
   </header>
 
   <div class="grid">
     <section class="card">
       <form id="f">
-        <textarea id="q" placeholder="Ask anything. The router decides: answer on this Mac, or call the frontier model."></textarea>
-        <button id="go">Ask</button>
+        <textarea id="q" placeholder="Ask a question, or pick one of the demo questions below."></textarea>
+        <button class="ask" id="go">Ask</button>
       </form>
-      <div class="examples" id="examples"></div>
+      <div class="hint">⌘/Ctrl + Enter to ask</div>
+      <details class="picker" id="picker" hidden>
+        <summary>Demo questions</summary>
+        <div class="groups" id="groups"></div>
+      </details>
 
-      <div class="decision" id="decision"></div>
-      <div class="bars" id="bars" hidden>
-        <span>ŝ local</span><div class="bar"><i id="bS" style="background:var(--local)"></i></div><span id="vS"></span>
-        <span>ŝ frontier</span><div class="bar"><i id="bL" style="background:var(--frontier)"></i></div><span id="vL"></span>
-        <span>Δ̂ vs τ*</span><div class="bar delta"><i id="bD" style="background:var(--accent)"></i><b id="tau"></b></div><span id="vD"></span>
+      <div class="steps">
+        <div class="step" id="s1"><div class="n">Step 1</div><div class="t" id="s1t">Local model answers</div><div class="d" id="s1d">on this Mac, free</div></div>
+        <div class="step" id="s2"><div class="n">Step 2</div><div class="t">Confidence check</div><div class="d" id="s2d">how sure is it?</div></div>
+        <div class="step" id="s3"><div class="n">Step 3</div><div class="t">Decision</div><div class="d" id="s3d">keep it, or escalate</div></div>
       </div>
-      <div class="answer" id="answer"></div>
+
+      <div class="verdict" id="verdict">
+        <div class="big" id="vbig"></div>
+        <div class="why" id="vwhy"></div>
+        <div class="meter" id="meter" hidden>
+          <div class="track"><span class="thr"></span><span class="dot" id="dot"></span></div>
+          <div class="scale"><span>← sure enough: keep on the Mac</span><span>certified threshold τ*</span><span>not sure: escalate →</span></div>
+        </div>
+      </div>
+
+      <div class="answer-card">
+        <div class="answer-head"><span id="ahead">Answer</span><span id="acost"></span></div>
+        <div class="answer" id="answer"></div>
+      </div>
       <div class="meta" id="meta"></div>
     </section>
 
-    <aside class="card">
-      <div class="sub">Saved so far vs always-frontier</div>
-      <div class="big" id="saved">$0.0000</div>
-      <div class="sub" id="savedShare">&nbsp;</div>
-      <div style="margin-top:12px">
-        <div class="stat"><span>Queries</span><b id="n">0</b></div>
-        <div class="stat"><span>Answered locally</span><b id="nl">0</b></div>
-        <div class="stat"><span>Sent to frontier</span><b id="nf">0</b></div>
-        <div class="stat"><span>Spent</span><b id="spent">$0</b></div>
-        <div class="stat"><span>Always-frontier would cost</span><b id="allf">$0</b></div>
-        <div class="stat"><span>Router latency p50 / p99</span><b id="lat">–</b></div>
+    <aside>
+      <div class="card">
+        <div class="label">Saved vs always-frontier</div>
+        <div class="saved" id="saved">$0.0000</div>
+        <div class="share" id="savedShare">no questions yet</div>
+        <div class="split"><i id="splitL" style="background:var(--local);width:0"></i><i id="splitF" style="background:var(--frontier);width:0"></i></div>
+        <div class="legend"><span>kept on Mac <b id="nl">0</b></span><span>sent to frontier <b id="nf">0</b></span></div>
+        <div style="margin-top:12px">
+          <div class="stat"><span>Questions</span><b id="n">0</b></div>
+          <div class="stat"><span>Spent</span><b id="spent">$0</b></div>
+          <div class="stat"><span>Always-frontier would cost</span><b id="allf">$0</b></div>
+          <div class="stat"><span>Router decision p50 / p99</span><b id="lat">–</b></div>
+        </div>
+        <p class="note">Live demo traffic, priced at frontier list rates. Not a certified figure.</p>
       </div>
-      <p class="sub">Frontier priced at list rates even on a free tier, so “saved” is what this traffic would have cost.</p>
+      <div class="card cert-card" id="certCard" hidden>
+        <div class="label">Certified result (thesis)</div>
+        <div class="num" id="certNum"></div>
+        <div class="row" id="certRow"></div>
+        <p class="note" id="certNote"></p>
+      </div>
     </aside>
   </div>
 </main>
@@ -95,73 +185,126 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const usd = (x) => "$" + (x < 0.01 ? x.toFixed(5) : x.toFixed(4));
-const EXAMPLES = [
-  "What is the capital of France?",
-  "Natalia sold clips to 48 friends in April, and half as many in May. How many clips did she sell altogether?",
-  "Prove that there are infinitely many primes of the form 4k+3.",
-  "Which of these is a mammal? A) shark B) dolphin C) trout D) eel",
-];
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const dur = (ms) => ms == null ? "–" : ms < 1000 ? `${ms.toFixed(0)} ms` : `${(ms / 1000).toFixed(1)} s`;
+const render = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");          // light markdown: bold only
+const HEADLINE_TAU = 8.2187;                                                     // notes/t27_t28_locked_numbers.md
+
+// theme: light by default (projectors), dark on request; remembered per browser
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("theme", t); } catch (e) {}
+}
+let theme = "light";
+try { theme = localStorage.getItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); } catch (e) {}
+setTheme(theme);
 
 let health = null;
 fetch("/health").then(r => r.json()).then(h => {
   health = h;
-  $("health").textContent = `local: ${h.small} · frontier: ${h.large} · τ* = ${h.tau.toFixed(3)} (rule ${h.rule})` +
-    (h.offline ? " · OFFLINE" : "") + (h.bundle && h.bundle.interim ? " · interim router" : "");
-}).catch(() => { $("health").textContent = "server not reachable"; });
+  const m = h.bundle || {};
+  $("tagline").textContent = `${h.small} answers on this Mac; ${h.large} is the frontier model.`;
+  $("pills").innerHTML =
+    (h.offline ? `<span class="pill off">OFFLINE · cached frontier answers</span>` : `<span class="pill ok">frontier live</span>`) +
+    `<span class="pill ok">τ* = ${h.tau.toFixed(3)}</span>` +
+    (m.featurizer ? `<span class="pill">${m.featurizer}</span>` : "") +
+    (m.interim ? `<span class="pill off">interim router</span>` : "") +
+    `<span class="pill theme" id="themeBtn">${theme === "dark" ? "☀︎ light" : "☾ dark"}</span>`;
+  $("themeBtn").onclick = () => { theme = theme === "dark" ? "light" : "dark"; setTheme(theme);
+                                  $("themeBtn").textContent = theme === "dark" ? "☀︎ light" : "☾ dark"; };
+  const t = m.test;
+  if (t && Math.abs(h.tau - HEADLINE_TAU) < 1e-3) {           // only claim the thesis number for the thesis router
+    $("certCard").hidden = false;
+    $("certNum").textContent = "41.3% saved";
+    $("certRow").innerHTML = `<span><b>${(100 * t.pgr).toFixed(1)}%</b> of GPT-4's quality advantage kept</span>`;
+    $("certNote").textContent = `API spend on 4,707 held-out test questions, threshold fixed in advance (seed-free WSR, PGR ≥ 0.95 with 95% confidence). ${(100 * t.alpha).toFixed(1)}% of questions went to the frontier.`;
+  }
+}).catch(() => { $("pills").innerHTML = `<span class="pill off">server not reachable</span>`; });
 
-for (const e of EXAMPLES) {
-  const b = document.createElement("button");
-  b.type = "button"; b.textContent = e.length > 48 ? e.slice(0, 46) + "…" : e;
-  b.onclick = () => { $("q").value = e; ask(); };
-  $("examples").appendChild(b);
-}
+fetch("/demo-set").then(r => r.json()).then(items => {
+  if (!items.length) return;
+  const groups = { easy: "Easy · should stay on the Mac", hard: "Hard · should escalate",
+                   free: "Free-form · not certified", chat: "Open chat" };
+  for (const [key, title] of Object.entries(groups)) {
+    const mine = items.filter(it => it.id.startsWith(key));
+    if (!mine.length) continue;
+    const g = document.createElement("div"); g.className = "group";
+    g.innerHTML = `<h3>${title}</h3>`;
+    for (const it of mine) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "q"; b.title = it.query;
+      b.innerHTML = `<code>${it.id}</code>${esc(it.query)}`;
+      b.onclick = () => { $("q").value = it.query; $("picker").open = false; ask(); };
+      g.appendChild(b);
+    }
+    $("groups").appendChild(g);
+  }
+  $("picker").hidden = false;
+}).catch(() => {});
 
 function showTotals(t) {
   $("saved").textContent = usd(t.saved_usd);
-  $("savedShare").textContent = t.all_frontier_usd > 0 ? `${(100 * t.saved_share).toFixed(1)}% cheaper` : " ";
+  $("savedShare").textContent = t.all_frontier_usd > 0 ? `${(100 * t.saved_share).toFixed(1)}% cheaper than always using the frontier` : "no questions yet";
   $("n").textContent = t.queries; $("nl").textContent = t.local; $("nf").textContent = t.frontier;
+  const n = Math.max(1, t.local + t.frontier);
+  $("splitL").style.width = (100 * t.local / n) + "%"; $("splitF").style.width = (100 * t.frontier / n) + "%";
   $("spent").textContent = usd(t.spent_usd); $("allf").textContent = usd(t.all_frontier_usd);
-  $("lat").textContent = `${t.router_ms_p50.toFixed(1)} / ${t.router_ms_p99.toFixed(1)} ms`;
+  $("lat").textContent = t.queries ? `${t.router_ms_p50.toFixed(1)} / ${t.router_ms_p99.toFixed(1)} ms` : "–";
 }
 fetch("/stats").then(r => r.json()).then(showTotals).catch(() => {});
+
+function step(i, state, text) {               // state: "" (idle) | "busy" | "on"
+  const el = $("s" + i);
+  el.className = "step" + (state ? " on" : "") + (state === "busy" ? " busy" : "");
+  if (text !== undefined) $(i === 1 ? "s1d" : i === 2 ? "s2d" : "s3d").innerHTML = text;
+}
 
 function ask(ev) {
   if (ev) ev.preventDefault();
   const q = $("q").value.trim();
   if (!q) return;
   $("go").disabled = true;
-  $("answer").textContent = ""; $("meta").innerHTML = ""; $("decision").innerHTML = "";
+  let raw = "";
+  $("answer").innerHTML = ""; $("meta").innerHTML = ""; $("acost").textContent = ""; $("ahead").textContent = "Answer";
+  $("verdict").className = "verdict"; $("meter").hidden = true;
+  step(1, ""); step(2, ""); step(3, "");
   const t0 = performance.now();
   const es = new EventSource("/chat/stream?q=" + encodeURIComponent(q));
-  es.addEventListener("status", (e) => {          // the local model is answering before the router decides
-    $("decision").innerHTML = `<span class="sub">${JSON.parse(e.data).message}</span>`;
+
+  es.addEventListener("status", () => {      // cascade: the local model is answering before the router decides
+    step(1, "busy", `<span class="spin"></span>${health ? health.small : "local model"} is answering…`);
   });
   es.addEventListener("route", (e) => {
     const d = JSON.parse(e.data);
-    const where = d.route === "frontier" ? "FRONTIER" : "LOCAL";
-    const why = d.signal ? ` · ${d.kind}: ${d.signal}` : "";
-    const cert = d.certified === false ? ` · <b>not a certified question type</b>` : "";
-    $("decision").innerHTML = `<span class="badge ${d.route}">${where}</span>` +
-      `<span class="sub">${d.model} · router ${d.router_ms.toFixed(1)} ms${d.forced ? " · forced" : ""}${why}${cert}</span>`;
-    $("bars").hidden = d.s_hat_S == null;
-    if (d.s_hat_S == null) return;
-    $("bS").style.width = (100 * d.s_hat_S) + "%"; $("vS").textContent = d.s_hat_S.toFixed(2);
-    $("bL").style.width = (100 * d.s_hat_L) + "%"; $("vL").textContent = d.s_hat_L.toFixed(2);
-    // Δ̂ in [-1, 1] drawn on [0, 100%]; τ* marker on the same scale (rule v1)
-    const pos = (x) => Math.max(0, Math.min(100, 50 + 50 * x));
-    $("bD").style.width = pos(d.delta_hat) + "%"; $("vD").textContent = d.delta_hat.toFixed(2);
-    $("tau").style.left = (d.rule === "v1" ? pos(d.tau) : 50) + "%";
+    const local = d.route === "local";
+    const cascade = !!d.kind;
+    step(1, "on", cascade ? (d.kind === "multiple choice" ? "scored the options (one pass)" : "answered 3 times") : "skipped: decided from the question");
+    step(2, "on", d.signal ? esc(d.signal) : (d.forced ? "skipped (forced)" : "predicted from the question"));
+    step(3, "on", local ? `<b style="color:var(--local)">keep on the Mac</b>` : `<b style="color:var(--frontier)">send to ${esc(d.model)}</b>`);
+
+    $("verdict").className = "verdict " + d.route;
+    $("vbig").textContent = local ? "Answered on this Mac · $0" : `Sent to ${d.model}`;
+    const cert = d.certified === false ? `<span class="tag uncert">NOT A CERTIFIED QUESTION TYPE</span>`
+               : (cascade ? `<span class="tag cert">certified question type</span>` : "");
+    const why = d.signal ? `${esc(d.kind)}: ${esc(d.signal)}` : "";
+    $("vwhy").innerHTML = why + cert + (d.forced ? `<span class="tag forced">forced</span>` : "") +
+      ` <span style="color:var(--muted);font-size:14px">· decided in ${d.router_ms.toFixed(1)} ms</span>`;
+    if (d.score != null && d.tau) {           // position of the risk score relative to τ* (τ* at the centre)
+      const x = Math.max(2, Math.min(98, 50 * d.score / d.tau));
+      $("dot").style.left = x + "%"; $("meter").hidden = false;
+    }
+    $("ahead").textContent = local ? `${d.model} · on this Mac` : `${d.model} · frontier`;
   });
-  es.addEventListener("token", (e) => { $("answer").textContent += JSON.parse(e.data); });
+  es.addEventListener("token", (e) => { raw += JSON.parse(e.data); $("answer").innerHTML = render(raw); });
   es.addEventListener("error", (e) => {
-    if (e.data) $("answer").innerHTML += `<div class="err">${JSON.parse(e.data)}</div>`;
+    if (e.data) $("answer").innerHTML += `<div class="err">${esc(JSON.parse(e.data))}</div>`;
+    else if (!raw) $("answer").innerHTML = `<div class="err">connection lost</div>`;
     es.close(); $("go").disabled = false;
   });
   es.addEventListener("done", (e) => {
     const d = JSON.parse(e.data);
-    $("meta").innerHTML = `<span>first token <b>${d.first_token_ms ? d.first_token_ms.toFixed(0) : "–"} ms</b></span>` +
-      `<span>total <b>${(performance.now() - t0).toFixed(0)} ms</b></span>` +
-      `<span>this query <b>${usd(d.cost_usd)}</b></span>` + (d.cached ? `<span>cached</span>` : "");
+    $("acost").textContent = d.cost_usd > 0 ? `cost ${usd(d.cost_usd)}` : `cost $0 (would have been ${usd(d.counterfactual_usd || 0)})`;
+    $("meta").innerHTML = `<span>first words after <b>${dur(d.first_token_ms)}</b></span>` +
+      `<span>total <b>${dur(performance.now() - t0)}</b></span>` + (d.cached ? `<span>from cache</span>` : "");
     showTotals(d.totals);
     es.close(); $("go").disabled = false;
   });

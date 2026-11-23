@@ -218,3 +218,16 @@ def test_done_reports_counterfactual_and_says_where_the_answer_came_from():
     hit = f.chat("A pencil costs 2 dollars. How much do 3 pencils cost?")["done"]
     assert live["cached"] is False and hit["cached"] is True
     assert live["cost_usd"] > 0 and np.isclose(live["cost_usd"], live["counterfactual_usd"])
+
+
+def test_demo_set_endpoint_lists_the_planned_questions(tmp_path):
+    from router.serve import load_demo_set
+
+    f = tmp_path / "demo.yaml"
+    f.write_text('queries:\n  - {id: easy-01, expect: local, query: "What is 2+2?", note: "x"}\n')
+    assert load_demo_set(f) == [{"id": "easy-01", "expect": "local", "query": "What is 2+2?"}]
+    assert load_demo_set(tmp_path / "missing.yaml") == []
+    from fastapi.testclient import TestClient
+
+    items = TestClient(create_app(_demo())).get("/demo-set").json()
+    assert items and {"id", "expect", "query"} <= set(items[0])      # the repo's configs/demo_set.yaml
