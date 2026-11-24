@@ -47,6 +47,15 @@ the Mac. The same code, replayed on 200 test questions, matched the offline eval
 
 ## Dry runs (T49)
 
-Run the same script twice, timed, with the whole team: once on a laptop screen, once on a
-projector (check font size and that the badge colours are visible). Each presenter covers their
-own lane's slides, then this demo (about 7 minutes). Note anything that runs over and cut it.
+Run the same script twice, timed, with the whole team, from the combined deck
+(`slides/cost_aware_router_deck.pptx`, 27 slides: opening by A, then lanes A, B, C, D, the live demo,
+close):
+
+| Run | Date | Where | Check |
+|---|---|---|---|
+| 1 | **Fri 27 Nov 2026** | Kartiken's M2, laptop screen | timing per lane (aim ≤ 5 min each + 7 min demo), handovers, preflight PASS before starting |
+| 2 | **Tue 1 Dec 2026** | M2 on a projector | page readable from the back (light theme), green/red route colours visible, backup video plays from USB |
+
+Before each run: `python scripts/20_demo_preflight.py` must print PASS, then
+`python scripts/serve_demo.py --offline`. Note anything that runs over and cut it. Move the dates if
+the guide's schedule needs it; keep at least two days between the runs to fix what run 1 finds.

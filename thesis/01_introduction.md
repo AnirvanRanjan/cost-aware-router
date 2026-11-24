@@ -6,16 +6,15 @@
 > number against the repository's reports, and to help write parts of the code; the author directed the
 > work, reviewed and rewrote the text, and is responsible for its content. Lane A's work comprises the
 > RouterBench audit and re-grading, gold-letter recovery, template-centred de-duplication and frozen
-> splits (Chapter 3), the threshold and cost code (`router/threshold.py`, `router/costs.py`), the
+> splits (Chapter 3), the threshold code (`router/threshold.py`), the cost models M1 and M2 with the crossover speed and batch baseline (`router/costs.py`), the
 > Track B generation pipeline, and the D-15 demo router (`router/signals.py`, the `cascade_t61` bundle,
 > the server's cascade path). Results from other lanes are credited in their chapters: features and
 > routers to Lane B (Huwaid Siddiqui), certification and the seed-free bound to Lane C (Sarthak
-> Jakhmola), and the on-device system and demo to Lane D (Kartiken). **[TODO Ani: confirm this
-> wording and the attribution list before submission.]**
+> Jakhmola), and the on-device system and demo to Lane D (Kartiken Sharma).
 
 ## 1.1 The Problem: Frontier Capability at Frontier Cost
 
-Frontier large language models (LLMs) solve complex reasoning tasks with remarkable accuracy, yet their commercial deployment incurs steep economic costs. Under 2026 enterprise pricing, flagship proprietary models such as Claude 3.5 Sonnet and GPT-4 charge approximately $3.00 per million input tokens and $15.00 per million output tokens. In contrast, modern open-weight edge models—such as Qwen2.5-4B and Qwen3.5-4B—execute locally on standard consumer hardware (e.g., an Apple Silicon laptop with 16 GB unified memory) for the negligible marginal cost of electricity.
+Frontier large language models (LLMs) solve complex reasoning tasks with remarkable accuracy, yet their commercial deployment incurs steep economic costs. At 2026 list prices, a flagship proprietary model such as Claude Sonnet 4.6 (the reference price used throughout this report) charges $3.00 per million input tokens and $15.00 per million output tokens. In contrast, small open-weight models such as Qwen3.5-4B execute locally on standard consumer hardware (e.g., an Apple Silicon laptop with 16 GB unified memory) for the negligible marginal cost of electricity.
 
 Crucially, the majority of everyday user requests do not require the full parameter capacity of a frontier system. On standard academic evaluations, a medium-sized open model such as Mixtral-8x7B (47 billion parameters) successfully resolves 55% to 83% of benchmark queries depending on domain complexity, compared to 81% to 96% for GPT-4 (Chapter 3). Edge-tier architectures display even greater efficiency relative to their footprint: running locally under 4-bit quantization, Qwen3.5-4B achieves 69% to 92% accuracy across identical benchmarks, against 82% to 97% for GPT-4 (`notes/trackb_results.md`).
 
@@ -132,7 +131,7 @@ Importantly, if the decision threshold is selected retrospectively by scanning t
 - **Chapter 8 (Conclusion):** Summarizes findings and outlines future research directions in test-time calibration.
 
 **Author Contributions:**
-- **Data Engineering & Corpus Curation (Lane A):** Anirvan Ranjan (auditing, GSM8K regrading, gold answer reconstruction, semantic deduplication, and split governance).
-- **Feature Extraction & Routing Models (Lane B):** HSID007 (feature extractors, two-head classifiers, calibration, and cascade feature design).
-- **Statistical Evaluation & Risk Control (Lane C):** Sarthak Jakhmola (cost models, LTT concentration bounds, seed-free WSR implementation, and Pareto analyses).
-- **Edge Deployment & Demonstration (Lane D):** kartiken07 (MLX optimization, Apple Silicon profiling, FastAPI serving engine, and user interface).
+- **Data Engineering, Cost Models & System Integration (Lane A):** Anirvan Ranjan (auditing, GSM8K regrading, gold answer reconstruction, semantic deduplication and split governance, the cost models M1 and M2, the threshold code, Track B generation, and the D-15 demo router).
+- **Feature Extraction & Routing Models (Lane B):** Huwaid Siddiqui (feature extractors, two-head classifiers, calibration, and cascade feature design).
+- **Statistical Evaluation & Risk Control (Lane C):** Sarthak Jakhmola (LTT concentration bounds, bootstrap undercoverage, seed-free WSR implementation, and Pareto analyses).
+- **Edge Deployment & Demonstration (Lane D):** Kartiken Sharma (MLX optimization, Apple Silicon profiling, FastAPI serving engine, and user interface).

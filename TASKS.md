@@ -33,10 +33,10 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | Who | Do this now | Why it can't wait |
 |---|---|---|
 | **All** | Final numbers locked 2026-11-23 (41.3% M1 / 28.4% M2 / 29.5% one-answer / 2.1% question-only). Each lane: cut your slides to 3–4, finish viva notes, send dry-run dates. | Presentation is the critical path |
-| **A** · Ani | Confirm the ch. 1 AI declaration; get the UPES template, page limit and deadline from the guide; assemble the combined deck; merge chapters into the template (T54). | The template blocks the final thesis |
+| **A** · Ani | Ch. 1 declaration ✅, cost-model attribution ✅, combined deck ✅, merged report draft ✅. Still: get the UPES template, page limit and deadline from the guide; fill guide name + SAP IDs in `thesis/00_front_matter.md`. | The template decides the final format |
 | **B** · HSID | Ch. 4 merged. Declaration: say AI helped *draft and refine* (as ch. 5); own-words pass; slides to 3–4. | — |
-| **C** · Sarthak | Ch. 5 merged with the locked numbers (M2 28.4%). Draft your 3–4 slides and viva notes; check the cost-model attribution with Ani (costs.py is lane A's code). | — |
-| **D** · Kartiken | Backup video ✅ (offline). Own-words pass on ch. 6; re-record only if the new demo page (`a/frontend`) is merged; T47 stays free-tier throttled unless billing is enabled. | — |
+| **C** · Sarthak | Slides (deck section C) and viva notes (`notes/lane_c_viva_prep.md`) drafted — rehearse them in your own words. Ch. 5 declaration now credits `router/costs.py` to lane A. | — |
+| **D** · Kartiken | Backup video ✅ (offline). Own-words pass on ch. 6; new demo page is on main: pull, re-run the preflight, re-record the backup video with it, update §6.5 to describe the new page; T47 stays free-tier throttled unless billing is enabled. | — |
 
 ---
 
@@ -102,7 +102,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T46 | D | Offline mode: fill the cache with frontier answers for the demo and replay sets | ✅ after the 2026-11-19 soak (48 frontier + 234 local rows): all 24 demo-set questions answer with `--offline`; replay queries throttled by the 20/day cap were not cached |
 | T47 | D | One-hour soak test on the M2: memory, first-token latency, throttling → `notes/demo_perf.md` | 🔶 2026-11-21 re-run with the fixed script: 1010 queries, 553 answered, cache/live split, phys_footprint 0.15→11.00 GB, savings **63.3%** (answered only) — but the frontier arm was still free-tier capped (**457× HTTP 429**; `quotaId` FreeTier, 20/day on 11-21, 5/min on 11-22) so **billing is still off**; clean re-run pending (`notes/demo_perf.md`) |
 | T48 | All | Backup video of the full demo | ✅ recorded offline on the M2 (2026-11-23); keep a copy in the shared drive and on a USB stick |
-| T49 | All | Two timed dry runs, one on a projector | ⬜ |
+| T49 | All | Two timed dry runs, one on a projector | 🔶 scheduled: Fri 27 Nov (laptop), Tue 1 Dec (projector) — `notes/demo_video_script.md` |
 
 ## Report and defence
 
@@ -112,10 +112,10 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | T51 | B | Chapter 4, Features, router, ablation, cascade | ✅ merged; declaration wording to fix |
 | T52 | C | Chapter 5, Cost model, thresholds, guarantees, results (`thesis/05_results.md`) | ✅ merged with locked numbers |
 | T53 | D | Chapter 6, Local inference, the GPU run, serving, demo performance | 🔶 draft in `thesis/06_system.md`; facts updated 2026-11-21 (demo set 24/24, T44 replay, sklearn pin, soak marked PENDING T47 re-run, chapter commands re-run); needs Kartiken's own wording |
-| T54 | A | Ch. 1, 2, 3, 7, 8 in own words ✅, final numbers ✅; merge all chapters into the UPES template | 🔶 waits for the template |
+| T54 | A | Ch. 1, 2, 3, 7, 8 in own words ✅, final numbers ✅; merge all chapters into the UPES template | 🔶 merged draft: `python scripts/build_report.py` → `thesis/build/report.docx` (front matter, abstract, 8 chapters, references, page breaks; common UPES layout). Re-run with `--reference-doc` when the official template arrives; fill guide name and SAP IDs in `thesis/00_front_matter.md` |
 | T55 | D | Reproducibility: one command per figure, tested on a fresh clone. scikit-learn pinned to 1.8.0 in `requirements.txt`: the release router and tau* 8.2187 came from 1.8.0; a 1.9.1 refit certifies 48.3% vs 41.3% (`notes/d15_demo_router.md`) | ✅ fresh-clone repro verified 2026-11-21 (Python 3.13.2, sklearn 1.8.0): bundle tau* 8.21873510404553, T41 100%, `17_t60_seed_free_wsr` 41.3% [39.0, 43.5], demo set 24/24 — README "Reproduce the headline and the demo" |
-| T56 | All | Slides | 🔶 lane D draft ready: `notes/lane_d_presentation_slides.md` (12 slides, every number sourced) — Kartiken to cut and speak |
-| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | 🔶 lane D draft ready: `notes/lane_d_viva_prep.md` (all five T57 questions + serving/memory/number-confusion set); lane A: `notes/lane_a_viva_prep.md` |
+| T56 | All | Slides | 🔶 combined deck `slides/cost_aware_router_deck.pptx` (27 slides, built by `node slides/build_deck.js`; speaker notes cite sources). Lane notes: `notes/lane_{a,b,c,d}_presentation_slides.md`. Each presenter: rehearse own section, send changes to Ani |
+| T57 | All | Viva prep (why PGR, how τ avoids leakage, why the cascade, bf16 vs 4-bit, what if the free tier disappears) | 🔶 lane D draft ready: `notes/lane_d_viva_prep.md` (all five T57 questions + serving/memory/number-confusion set); lane A: `notes/lane_a_viva_prep.md`; lane C: `notes/lane_c_viva_prep.md` (12 Q&As); lane B: `notes/lane_b_viva_prep.md` |
 | T58 | A | Repo public (D-09), MIT licence (D-10) | ✅ |
 
 ---

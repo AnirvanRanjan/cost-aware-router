@@ -1,7 +1,14 @@
 # Thesis drafts
 
 Markdown drafts of the report, one file per chapter, so they can be reviewed in PRs like code.
-Convert when the format is decided:
+Merged report (front matter, abstract, all chapters, references, A4 / Times 12 / 1.5 spacing):
+
+```bash
+python scripts/build_report.py                                   # -> thesis/build/report.docx
+python scripts/build_report.py --reference-doc upes_template.docx  # once the official template arrives
+```
+
+In Word, right-click the table of contents → Update Field after opening. Plain pandoc, if needed:
 
 ```bash
 pandoc thesis/0*.md --citeproc --bibliography thesis/references.bib -o thesis.docx   # Word
@@ -10,8 +17,9 @@ pandoc thesis/0*.md --citeproc --bibliography thesis/references.bib -o thesis.te
 
 | File | Chapter | Owner | Status |
 |---|---|---|---|
+| `00_front_matter.md` | Title page, declaration, certificate, acknowledgement, abstract | A | Draft; fill guide name and SAP IDs |
 | `01_introduction.md` | 1 Introduction | A (T54) | Own wording; final numbers (T28 locked, 2026-11-23) |
-| `02_related_work.md` | 2 Related work | A (T54) | Draft; citations checked 2026-10-27, three [check] notes |
+| `02_related_work.md` | 2 Related work | A (T54) | Draft; citations checked 2026-10-27 |
 | `03_data.md` | 3 Data | A (T50) | Draft, all numbers from the frozen release |
 | `04_router.md` | 4 Features and router | B (T51) | Own wording; Track B + D-15 sections; final numbers |
 | `05_results.md` | 5 Cost model, thresholds, results | C (T52) | Locked numbers (tau* 8.2187, 41.3% M1, 28.4% M2); AI declaration |

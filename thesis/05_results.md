@@ -3,8 +3,8 @@
 > **Author Declaration & Attributions:** This chapter was authored by Sarthak Jakhmola (Lane C: Calibration, Evaluation, and Risk Control). In accordance with University of Petroleum and Energy Studies (UPES) guidelines on academic integrity and generative artificial intelligence assistance:
 > - **Use of AI Tools:** Generative AI tools were used to assist in drafting, structuring, and refining the text of this chapter, as well as formatting KaTeX expressions and tables from experimental logs.
 > - **Attribution of Work:**
->   - **Lane C (Author's Work):** The statistical risk control formulation, the empirical demonstration of bootstrap undercoverage, the investigation and measurement of single-sequence WSR permutation variance (T60), the design and implementation of the seed-free terminal WSR e-value averaging bound (`scripts/17_t60_seed_free_wsr.py`), the cost model definitions (M1, M2 amortisation, and crossover analysis), and the evaluation sweeps and benchmark figures (T27, T28, T37) were conducted by Lane C.
->   - **Collaborative Project Artifacts:** The shared threshold evaluation engine in `router/threshold.py` (which ports the author's seed-free bound as `method="wsr_avg"`), the D-15 demonstration pipeline (`router/signals.py`, the `cascade_t61` bundle mode, and the live server cascade path), the dataset curation, and split isolation were developed by Lane A (Anirvan Ranjan). The feature extractors, routing architectures, and predictive models evaluated in this chapter were engineered by Lane B (Huwaid Siddiqui). Edge deployment, MLX quantization, and serving infrastructure were built by Lane D (Kartiken Sharma).
+>   - **Lane C (Author's Work):** The statistical risk control formulation, the empirical demonstration of bootstrap undercoverage, the investigation and measurement of single-sequence WSR permutation variance (T60), the design and implementation of the seed-free terminal WSR e-value averaging bound (`scripts/17_t60_seed_free_wsr.py`), the evaluation sweeps and benchmark figures (T27, T28, T37), including the M1 and M2 savings reported for every router in Table 5.1, were conducted by Lane C.
+>   - **Collaborative Project Artifacts:** The shared threshold evaluation engine in `router/threshold.py` (which ports the author's seed-free bound as `method="wsr_avg"`), the cost models (`router/costs.py`: M1, M2 amortisation and energy, the crossover speed, and the batch-API baseline), the D-15 demonstration pipeline (`router/signals.py`, the `cascade_t61` bundle mode, and the live server cascade path), the dataset curation, and split isolation were developed by Lane A (Anirvan Ranjan). The feature extractors, routing architectures, and predictive models evaluated in this chapter were engineered by Lane B (Huwaid Siddiqui). Edge deployment, MLX quantization, and serving infrastructure were built by Lane D (Kartiken Sharma).
 
 ---
 
@@ -38,7 +38,7 @@ We consider threshold-based decision rules parameterized by cutoff $\tau \in \ma
 
 ## 5.2 Dual Cost Accounting: Models M1 and M2 and the Batch Baseline
 
-Published routing benchmarks frequently treat on-device inference as entirely free while evaluating cloud endpoints solely on on-demand token prices. To ground our analysis in realistic systems economics, we formulate two complementary cost regimes in `router/costs.py`.
+Published routing benchmarks frequently treat on-device inference as entirely free while evaluating cloud endpoints solely on on-demand token prices. To ground our analysis in realistic systems economics, the project uses two complementary cost regimes, implemented by Lane A in `router/costs.py`.
 
 ### 5.2.1 Cost Model M1: Direct Cloud API Expenditure
 
