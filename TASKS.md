@@ -36,7 +36,7 @@ python scripts/verify_data.py        # must print "Same data as everyone else."
 | **A** · Ani | Ch. 1 declaration ✅, cost-model attribution ✅, combined deck ✅, merged report draft ✅. Still: get the UPES template, page limit and deadline from the guide; fill guide name + SAP IDs in `thesis/00_front_matter.md`. | The template decides the final format |
 | **B** · HSID | Ch. 4 merged. Declaration: say AI helped *draft and refine* (as ch. 5); own-words pass; slides to 3–4. | — |
 | **C** · Sarthak | Slides (deck section C) and viva notes (`notes/lane_c_viva_prep.md`) drafted — rehearse them in your own words. Ch. 5 declaration now credits `router/costs.py` to lane A. | — |
-| **D** · Kartiken | Backup video ✅ (offline). Own-words pass on ch. 6; new demo page is on main: pull, re-run the preflight, re-record the backup video with it, update §6.5 to describe the new page; T47 stays free-tier throttled unless billing is enabled. | — |
+| **D** · Kartiken | Backup video ✅ (offline). Own-words pass on ch. 6; new demo page is on main and §6.5 now describes it (reword in your own words): pull, re-run the preflight, re-record the backup video with it; T47 stays free-tier throttled unless billing is enabled. | — |
 
 ---
 

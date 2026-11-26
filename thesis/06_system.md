@@ -166,12 +166,19 @@ always-frontier counterfactual uses the local answer's length as its output-leng
 ## 6.5 The web page
 
 The page is one file of vanilla HTML, CSS and JavaScript (`router/static/index.html`) — no build
-step, nothing to break offline. It opens an `EventSource` on `/chat/stream` and reacts to four
-events: `status` fills the decision line while Qwen is still answering (so the page is never blank
-during the 3-sample arithmetic path); `route` draws the badge, the signal behind the decision and
-the three bars against $\tau^*$; `token` appends text as it streams; `done` records first-token and
-total time and refreshes the sidebar totals. The sidebar prices every query and keeps a running
-"saved vs always-frontier" figure.
+step, no web fonts, nothing to break offline. It opens an `EventSource` on `/chat/stream` and reacts
+to four events. `status` starts a timed list of steps while Qwen is still answering, so the page is
+never blank during the 3-sample arithmetic path. `route` adds the router's decision to that list and
+draws what the router saw: for multiple choice, Qwen's probability for each option letter; for
+arithmetic and free-form questions, the final answers of the three samples side by side, with the
+majority marked. The route event carries these as an `evidence` field (`Demo._signals_local`), so the
+page shows the same signals the router read. Next to them, a ruler on a log scale places the router's
+score against $\tau^*$, and free-form decisions are tagged "not certified". `token` streams the answer;
+`done` records first-token and total time, adds a row to a per-question table (what was paid, what
+the frontier would have cost) and refreshes the running "saved vs always-frontier" total. A box on the
+side quotes the certified result (41.3%, Chapter 5) only when the loaded bundle's $\tau^*$ is 8.2187,
+so a different bundle can never display the thesis number. The light theme is the default because it
+stays readable on a projector; a dark theme is one click away.
 
 The page was checked in **Safari on the M2** (T43, 2026-11-18): it loads with
 `local: qwen3.5-4b · frontier: gemini-3-flash` and the bundle's $\tau^*$ in the header — 9.657 on

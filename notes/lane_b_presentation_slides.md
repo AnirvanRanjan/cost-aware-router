@@ -11,7 +11,7 @@
 - **Presenter:** Huwaid Siddiqui (Lane B Lead — Features, Model Architecture & Calibration)
 - **Core Challenge:** Frontier models (GPT-4) cost \$3.00 / \$15.00 per million tokens. Edge models (Qwen3.5-4B) run for \$0 on Apple Silicon laptops.
 - **Lane B Objective:** Build a low-latency routing policy that decides when to run locally vs. escalate to the cloud, guaranteeing at least $95\%$ performance gap recovered ($\text{PGR} \ge 0.95$).
-- **Key Takeaway:** Pre-execution text routing hits a ceiling as small models improve ($2.5\%$ savings on Qwen). Inspecting post-execution self-consistency and logit confidence unlocks **41.3% certified spend reduction**.
+- **Key Takeaway:** Pre-execution text routing hits a ceiling as small models improve ($2.1\%$ savings on Qwen). Inspecting post-execution self-consistency and logit confidence unlocks **41.3% certified spend reduction**.
 
 ---
 
@@ -54,7 +54,7 @@
   - Two-Head MLP achieves **$9.4\%$ certified savings** under WSR bound at $\text{PGR} \ge 95\%$.
 - **Track B (Qwen3.5-4B vs GPT-4):**
   - Baseline accuracies: Qwen $81.3\%$, GPT-4 $88.7\%$ $\implies$ Headroom contracts to **$\Delta = 0.0748$**.
-  - Query-only router collapses to **$2.5\%$ [1.8, 3.1]** certified savings (`query_f2`) and **$0.5\%$** (`two_head_mlp`).
+  - Query-only router collapses to **$2.1\%$ [1.5, 2.7]** certified savings (`query_f2`, seed-free WSR, Table 5.1) and **$0.5\%$** (`two_head_mlp`).
 - **Why Does Text-Only Routing Fail?**
   - Prompt semantics do not predict execution mistakes. Two GSM8K math questions with identical phrasing, length, and difficulty might result in one correct answer and one dropped negative sign in step 3.
   - Under narrow headroom ($0.075$), misclassifying just a few queries violates the risk floor ($\delta = 0.05$).
@@ -70,7 +70,7 @@
 - **Certified Results on Track B ($N=4,707$ test queries):**
   - **Seed-Free WSR ($M=50$):** **41.3% [39.0%, 43.5%] certified API savings** at realized test PGR of **102.8%** ($\tau^* = 8.2187$, escalating $75.9\%$).
   - Eliminates the $40.8\%–74.9\%$ seed variance of single-permutation martingales.
-  - **1-Sample Cascade Baseline (Decision D-14):** **27.8% [25.9, 29.6]** certified savings at $97.7\%$ PGR.
+  - **1-Sample Cascade Baseline (Decision D-14):** **29.5% [27.8, 31.5]** certified savings at $98.4\%$ PGR, scored on the answer the user sees (27.8% when scored against the majority-of-3 label; Table 5.1).
 - **Counter-Intuitive Finding:** Adding $F_2$ dense embeddings *degraded* cascade savings to $1.1\% - 3.4\%$. 768 continuous embedding dimensions overwhelmed tree splits on the 11 confidence features, fitting topic noise rather than uncertainty.
 
 ---
