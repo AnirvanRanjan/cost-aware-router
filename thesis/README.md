@@ -17,7 +17,7 @@ pandoc thesis/0*.md --citeproc --bibliography thesis/references.bib -o thesis.te
 
 | File | Chapter | Owner | Status |
 |---|---|---|---|
-| `00_front_matter.md` | Title page, declaration, certificate, acknowledgement, abstract | A | Draft; SAP IDs filled; guide name still to fill |
+| `00_front_matter.md` | Title page, declaration, certificate, acknowledgement, abstract | A | Draft; SAP IDs and mentor filled |
 | `01_introduction.md` | 1 Introduction | A (T54) | Own wording; final numbers (T28 locked, 2026-11-23) |
 | `02_related_work.md` | 2 Related work | A (T54) | Draft; citations checked 2026-10-27 |
 | `03_data.md` | 3 Data | A (T50) | Draft, all numbers from the frozen release |

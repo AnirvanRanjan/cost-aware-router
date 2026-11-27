@@ -17,7 +17,7 @@ Certified Savings from Routing Between a Laptop Model and a Frontier Model", in 
 the requirements for the award of the degree of Bachelor of Technology (Hons.) in Computer Science and
 Engineering, submitted to the School of Computer Science, University of Petroleum and Energy Studies,
 Dehradun, is an authentic record of our work carried out under the guidance of
-[guide's name and designation].
+Dr. Ayush Kumar Aggarwal, School of Computer Science, UPES Dehradun.
 
 The use of generative AI tools is declared at the start of each chapter, in line with the University's
 guidelines. The matter presented in this report has not been submitted for the award of any other
@@ -35,13 +35,13 @@ degree.
 This is to certify that the above statement made by the candidates is correct to the best of my
 knowledge.
 
-[Guide's name], [designation], School of Computer Science, UPES Dehradun
+Dr. Ayush Kumar Aggarwal, School of Computer Science, UPES Dehradun (project mentor)
 
 Signature and date:
 
 # Acknowledgement {.unnumbered}
 
-We thank [guide's name] for guidance throughout the project, and the School of Computer Science,
+We thank Dr. Ayush Kumar Aggarwal for his guidance throughout the project, and the School of Computer Science,
 UPES, for its support. We thank the authors of RouterBench, whose released model responses made the
 first stage of this work possible, and the open-weight model community whose quantised models let the
 system run on a laptop.
