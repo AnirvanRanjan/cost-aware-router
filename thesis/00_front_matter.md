@@ -3,9 +3,9 @@ title: "A Cost-Aware Model Router: Certified Savings from Routing Between a Lapt
 subtitle: "Major Project Report submitted in partial fulfilment of the requirements for the degree of Bachelor of Technology (Hons.) in Computer Science and Engineering"
 author:
   - "Anirvan Ranjan (SAP ID 500119330)"
-  - "Huwaid Siddiqui (SAP ID: [to fill])"
-  - "Sarthak Jakhmola (SAP ID: [to fill])"
-  - "Kartiken Sharma (SAP ID: [to fill])"
+  - "Huwaid Siddiqui (SAP ID 500119722)"
+  - "Sarthak Jakhmola (SAP ID 500122482)"
+  - "Kartiken Sharma (SAP ID 500123941)"
 date: "School of Computer Science, University of Petroleum and Energy Studies, Dehradun — 2026"
 lang: en-GB
 ---
@@ -26,9 +26,9 @@ degree.
 | Name | SAP ID | Signature |
 |---|---|---|
 | Anirvan Ranjan | 500119330 | |
-| Huwaid Siddiqui | | |
-| Sarthak Jakhmola | | |
-| Kartiken Sharma | | |
+| Huwaid Siddiqui | 500119722 | |
+| Sarthak Jakhmola | 500122482 | |
+| Kartiken Sharma | 500123941 | |
 
 # Certificate {.unnumbered}
 
