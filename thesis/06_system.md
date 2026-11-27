@@ -165,20 +165,31 @@ always-frontier counterfactual uses the local answer's length as its output-leng
 
 ## 6.5 The web page
 
-The page is one file of vanilla HTML, CSS and JavaScript (`router/static/index.html`) — no build
-step, no web fonts, nothing to break offline. It opens an `EventSource` on `/chat/stream` and reacts
-to four events. `status` starts a timed list of steps while Qwen is still answering, so the page is
-never blank during the 3-sample arithmetic path. `route` adds the router's decision to that list and
-draws what the router saw: for multiple choice, Qwen's probability for each option letter; for
-arithmetic and free-form questions, the final answers of the three samples side by side, with the
-majority marked. The route event carries these as an `evidence` field (`Demo._signals_local`), so the
-page shows the same signals the router read. Next to them, a ruler on a log scale places the router's
-score against $\tau^*$, and free-form decisions are tagged "not certified". `token` streams the answer;
-`done` records first-token and total time, adds a row to a per-question table (what was paid, what
-the frontier would have cost) and refreshes the running "saved vs always-frontier" total. A box on the
-side quotes the certified result (41.3%, Chapter 5) only when the loaded bundle's $\tau^*$ is 8.2187,
-so a different bundle can never display the thesis number. The light theme is the default because it
-stays readable on a projector; a dark theme is one click away.
+The demo is one static file — `router/static/index.html`, hand-written HTML, CSS and JavaScript with
+no framework, no build step, no web fonts and no images — so it loads the same whether or not the
+machine has Wi-Fi. It is drawn to look like a figure from the thesis rather than a product page: a
+paper-coloured background, ink-coloured text, one rule weight and monospace numerals. That is also
+the practical choice — a light page stays readable on a projector, so light is the default theme and
+dark (the same layout inverted) is a single click away in the footer.
+
+The page holds one connection to the server, an `EventSource` on `/chat/stream`, and reacts to four
+events. `status` arrives while Qwen is still drawing its three samples and opens a timestamped list of
+steps, so the wait is visible instead of the page sitting blank. `route` appends the decision to that
+list and draws the evidence behind it: the values arrive in the event's `evidence` field, built by
+`Demo._signals_local`, so the page shows what the router read rather than a second computation of it.
+For a multiple-choice question that is Qwen's probability for every option letter as a bar chart; for
+arithmetic and free-form questions it is the three sampled answers side by side with the majority
+marked. Beside the evidence, a ruler on a logarithmic scale puts the router's score on an axis with
+$\tau^*$ in the middle: the marker lands on the hatched side when the question stays on the Mac and on
+the open side when it is escalated, and a decision on a question type outside the certified set
+carries a "not certified" tag. `token` streams the answer text; `done` freezes the first-token and
+total timings, appends a row to the per-question cost ledger — what was charged here, what the same
+question would have cost at list prices — and refreshes the sidebar's running "saved vs
+always-frontier" total, the local/frontier split and the router's p50/p99 decision time. A panel on
+the right quotes the certified result of Chapter 5 (41.3% less spend, 102.8% of GPT-4's quality
+advantage kept, 4,707 held-out questions), but only when the loaded bundle's $\tau^*$ is 8.2187: a
+rebuilt or experimental bundle shows no panel at all, so the thesis number can never be displayed next
+to a router it does not describe.
 
 The page was checked in **Safari on the M2** (T43, 2026-11-18): it loads with
 `local: qwen3.5-4b · frontier: gemini-3-flash` and the bundle's $\tau^*$ in the header — 9.657 on
@@ -186,6 +197,12 @@ the scikit-learn 1.9.1 bundle the check ran on, and **8.219** now that the bundl
 the 1.8.0 pin (6.8) — and both routes were exercised end to end: a multiple-choice question
 answered locally and an arithmetic question escalated to Gemini. The `status` message appears
 before the first token in both.
+
+The redesigned page passed the preflight (`python scripts/20_demo_preflight.py`) on 2026-11-27: 24/24
+demo questions answered offline through the server's own code path and routed where
+`configs/demo_set.yaml` expects them (12 local, 12 frontier). The page itself was then clicked through
+against `serve_demo.py --offline`: an easy maths question stayed on the Mac, a hard multiple-choice
+question went to Gemini, and an open chat question came back tagged "not certified".
 
 ## 6.6 Demo performance (T42, T44, T45, T47)
 
